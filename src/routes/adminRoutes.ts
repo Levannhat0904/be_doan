@@ -10,4 +10,5 @@ router.post('/create', authMiddleware, adminController.createAdmin.bind(adminCon
 
 router.post('/change-password', authMiddleware, adminController.changePassword);
 
+router.get('/current-session', authMiddleware, adminController.getCurrentSession);
 export default router; 

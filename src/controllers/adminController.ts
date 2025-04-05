@@ -95,4 +95,31 @@ export class AdminController {
       });
     }
   };
+
+  async getCurrentSession(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: 'Không tìm thấy phiên đăng nhập'
+        });
+        return;
+      }
+
+      const userInfo = await AdminService.getCurrentUserInfo(userId);
+
+      res.status(200).json({
+        success: true,
+        message: 'Lấy thông tin người dùng thành công',
+        data: userInfo
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Lỗi lấy thông tin người dùng'
+      });
+    }
+  }
 } 

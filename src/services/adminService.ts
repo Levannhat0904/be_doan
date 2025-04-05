@@ -19,6 +19,15 @@ interface Admin extends RowDataPacket {
   role: string;
 }
 
+interface UserWithProfile extends RowDataPacket {
+  id: number;
+  email: string;
+  user_type: string;
+  status: string;
+  last_login: Date;
+  profile: string | null;
+}
+
 export class AdminService {
   static async createAdmin(data: {
     email: string;
@@ -113,6 +122,79 @@ export class AdminService {
       );
     } finally {
       connection.release();
+    }
+  }
+
+  static async getCurrentUserInfo(userId: number) {
+    const connection = await pool.getConnection();
+
+    try {
+      const [rows] = await connection.execute<UserWithProfile[]>(`
+        SELECT 
+          u.id,
+          u.email,
+          u.user_type,
+          u.status,
+          u.last_login,
+          CASE 
+            WHEN u.user_type = 'admin' THEN (
+              SELECT JSON_OBJECT(
+                'id', a.id,
+                'staff_code', a.staff_code,
+                'full_name', a.full_name,
+                'phone', a.phone,
+                'role', a.role,
+                'department', a.department,
+                'avatar_path', a.avatar_path,
+                'created_at', a.created_at
+              )
+              FROM admins a 
+              WHERE a.user_id = u.id
+            )
+            WHEN u.user_type = 'student' THEN (
+              SELECT JSON_OBJECT(
+                'id', s.id,
+                'student_code', s.student_code,
+                'full_name', s.full_name,
+                'gender', s.gender,
+                'birth_date', s.birth_date,
+                'phone', s.phone,
+                'address', s.address,
+                'province', s.province,
+                'district', s.district,
+                'ward', s.ward,
+                'department', s.department,
+                'major', s.major,
+                'class_name', s.class_name,
+                'school_year', s.school_year,
+                'avatar_path', s.avatar_path,
+                'citizen_id', s.citizen_id,
+                'emergency_contact_name', s.emergency_contact_name,
+                'emergency_contact_phone', s.emergency_contact_phone,
+                'emergency_contact_relationship', s.emergency_contact_relationship,
+                'status', s.status,
+                'created_at', s.created_at
+              )
+              FROM students s 
+              WHERE s.user_id = u.id
+            )
+          END as profile
+        FROM users u
+        WHERE u.id = ?
+      `, [userId]);
+
+      if (!rows || !rows[0]) {
+        throw new Error('Không tìm thấy thông tin người dùng');
+      }
+
+      const user = rows[0];
+      if (user.profile) {
+        user.profile = JSON.parse(user.profile);
+      }
+
+      return user;
+    } catch (error) {
+      throw error;
     }
   }
 } 
