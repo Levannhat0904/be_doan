@@ -47,7 +47,7 @@ interface LoginResponse {
 export class AuthService {
   private static readonly JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
   private static readonly JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret';
-  private static readonly JWT_EXPIRES_IN = '1h';
+  private static readonly JWT_EXPIRES_IN = '6d';
   private static readonly JWT_REFRESH_EXPIRES_IN = '7d';
 
   static async login(email: string, password: string): Promise<LoginResponse> {
@@ -139,7 +139,7 @@ export class AuthService {
     }
   }
 
-  static async refreshToken(refreshToken: string): Promise<{ accessToken: string }> {
+  static async refreshToken(refreshToken: string): Promise<{ accessToken: string, refreshToken: string }> {
     const connection = await pool.getConnection();
     try {
       // Verify refresh token
@@ -163,7 +163,7 @@ export class AuthService {
         { expiresIn: this.JWT_EXPIRES_IN }
       );
 
-      return { accessToken };
+      return { accessToken, refreshToken: refreshToken };
     } finally {
       connection.release();
     }

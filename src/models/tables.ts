@@ -56,7 +56,19 @@ export const createTablesSQL = `
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+    ALTER TABLE students
+        ADD COLUMN personal_email VARCHAR(100),
+        ADD COLUMN school_email VARCHAR(100),
+        ADD COLUMN ethnicity VARCHAR(50),
+        ADD COLUMN religion VARCHAR(50),
+        ADD COLUMN father_name VARCHAR(100),
+        ADD COLUMN father_phone VARCHAR(15),
+        ADD COLUMN father_address_same_as_student BOOLEAN DEFAULT TRUE,
+        ADD COLUMN father_address TEXT,
+        ADD COLUMN mother_name VARCHAR(100),
+        ADD COLUMN mother_phone VARCHAR(15),
+        ADD COLUMN mother_address_same_as_student BOOLEAN DEFAULT TRUE,
+        ADD COLUMN mother_address TEXT;
     -- 4. DORMITORY MANAGEMENT
     CREATE TABLE IF NOT EXISTS buildings (
         id INT AUTO_INCREMENT PRIMARY KEY,

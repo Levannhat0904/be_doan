@@ -31,7 +31,6 @@ export class AuthController {
   logout: RequestHandler = async (req, res) => {
     try {
       const userId = req.user?.id;
-
       if (!userId) {
         res.status(401).json({
           success: false,
