@@ -13,7 +13,7 @@ async function createDefaultAdmin() {
     // Create default admin user
     const hashedPassword = await bcrypt.hash(process.env.DEFAULT_ADMIN_PASSWORD || 'Admin@123', 10);
     const [userResult] = await connection.query<ResultSetHeader>(`
-            INSERT INTO users (email, password, user_type, status)
+            INSERT INTO users (email, password, userType, status)
             VALUES (?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)
         `, [
@@ -25,9 +25,9 @@ async function createDefaultAdmin() {
 
     if (userResult.insertId) {
       await connection.query(`
-                INSERT INTO admins (user_id, staff_code, full_name, role)
+                INSERT INTO admins (userId, staffCode, fullName, role)
                 VALUES (?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE user_id=user_id
+                ON DUPLICATE KEY UPDATE userId=userId
             `, [
         userResult.insertId,
         'ADMIN001',

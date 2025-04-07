@@ -8,22 +8,22 @@ interface User extends RowDataPacket {
   id: number;
   email: string;
   password: string;
-  user_type: string;
+  userType: string;
   status: string;
 }
 
 interface Student extends RowDataPacket {
   id: number;
-  user_id: number;
-  student_code: string;
-  full_name: string;
+  userId: number;
+  studentCode: string;
+  fullName: string;
 }
 
 interface Admin extends RowDataPacket {
   id: number;
-  user_id: number;
-  staff_code: string;
-  full_name: string;
+  userId: number;
+  staffCode: string;
+  fullName: string;
   role: string;
 }
 
@@ -72,15 +72,15 @@ export class AuthService {
 
       // Lấy thông tin profile dựa vào user type
       let profile;
-      if (user.user_type === USER_TYPES.STUDENT) {
+      if (user.userType === USER_TYPES.STUDENT) {
         const [students] = await connection.query<Student[]>(
-          'SELECT * FROM students WHERE user_id = ?',
+          'SELECT * FROM students WHERE userId = ?',
           [user.id]
         );
         profile = students[0];
       } else {
         const [admins] = await connection.query<Admin[]>(
-          'SELECT * FROM admins WHERE user_id = ?',
+          'SELECT * FROM admins WHERE userId = ?',
           [user.id]
         );
         profile = admins[0];
@@ -88,7 +88,7 @@ export class AuthService {
 
       // Tạo tokens
       const accessToken = jwt.sign(
-        { userId: user.id, userType: user.user_type },
+        { userId: user.id, userType: user.userType },
         this.JWT_SECRET,
         { expiresIn: this.JWT_EXPIRES_IN }
       );
@@ -101,7 +101,7 @@ export class AuthService {
 
       // Cập nhật refresh token trong database
       await connection.query(
-        'UPDATE users SET refresh_token = ?, last_login = NOW() WHERE id = ?',
+        'UPDATE users SET refreshToken = ?, lastLogin = NOW() WHERE id = ?',
         [refreshToken, user.id]
       );
 
@@ -111,12 +111,12 @@ export class AuthService {
         user: {
           id: user.id,
           email: user.email,
-          userType: user.user_type,
+          userType: user.userType,
           profile: {
             id: profile.id,
-            staffCode: profile.staff_code,
-            studentCode: profile.student_code,
-            fullName: profile.full_name,
+            staffCode: profile.staffCode,
+            studentCode: profile.studentCode,
+            fullName: profile.fullName,
             role: (profile as Admin).role
           }
         }
@@ -131,7 +131,7 @@ export class AuthService {
     try {
       // Xóa refresh token khi logout
       await connection.query(
-        'UPDATE users SET refresh_token = NULL WHERE id = ?',
+        'UPDATE users SET refreshToken = NULL WHERE id = ?',
         [userId]
       );
     } finally {
@@ -147,7 +147,7 @@ export class AuthService {
 
       // Kiểm tra refresh token trong database
       const [users] = await connection.query<User[]>(
-        'SELECT * FROM users WHERE id = ? AND refresh_token = ?',
+        'SELECT * FROM users WHERE id = ? AND refreshToken = ?',
         [decoded.userId, refreshToken]
       );
 
@@ -158,7 +158,7 @@ export class AuthService {
 
       // Tạo access token mới
       const accessToken = jwt.sign(
-        { userId: user.id, userType: user.user_type },
+        { userId: user.id, userType: user.userType },
         this.JWT_SECRET,
         { expiresIn: this.JWT_EXPIRES_IN }
       );

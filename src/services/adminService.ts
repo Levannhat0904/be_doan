@@ -7,24 +7,24 @@ interface User extends RowDataPacket {
   id: number;
   email: string;
   password: string;
-  user_type: string;
+  userType: string;
   status: string;
 }
 
 interface Admin extends RowDataPacket {
   id: number;
-  user_id: number;
-  staff_code: string;
-  full_name: string;
+  userId: number;
+  staffCode: string;
+  fullName: string;
   role: string;
 }
 
 interface UserWithProfile extends RowDataPacket {
   id: number;
   email: string;
-  user_type: string;
+  userType: string;
   status: string;
-  last_login: Date;
+  lastLogin: Date;
   profile: string | null;
 }
 
@@ -54,7 +54,7 @@ export class AdminService {
 
       // Check if staff code already exists
       const [existingAdmins] = await connection.query<Admin[]>(
-        'SELECT id FROM admins WHERE staff_code = ?',
+        'SELECT id FROM admins WHERE staffCode = ?',
         [data.staffCode]
       );
 
@@ -67,7 +67,7 @@ export class AdminService {
 
       // Create user
       const [userResult] = await connection.query(
-        'INSERT INTO users (email, password, user_type, status) VALUES (?, ?, ?, ?)',
+        'INSERT INTO users (email, password, userType, status) VALUES (?, ?, ?, ?)',
         [data.email, hashedPassword, USER_TYPES.ADMIN, STATUS.ACTIVE]
       );
 
@@ -75,7 +75,7 @@ export class AdminService {
 
       // Create admin profile
       await connection.query(
-        'INSERT INTO admins (user_id, staff_code, full_name, role, phone, department) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO admins (userId, staffCode, fullName, role, phone, department) VALUES (?, ?, ?, ?, ?, ?)',
         [userId, data.staffCode, data.fullName, data.role, data.phone || null, data.department || null]
       );
 
@@ -97,7 +97,7 @@ export class AdminService {
     try {
       // Kiểm tra user có tồn tại không
       const [users] = await connection.query<User[]>(
-        'SELECT * FROM users WHERE id = ? AND user_type = ?',
+        'SELECT * FROM users WHERE id = ? AND userType = ?',
         [userId, USER_TYPES.ADMIN]
       );
 
@@ -133,31 +133,31 @@ export class AdminService {
         SELECT 
           u.id,
           u.email,
-          u.user_type,
+          u.userType,
           u.status,
-          u.last_login,
+          u.lastLogin,
           CASE 
-            WHEN u.user_type = 'admin' THEN (
+            WHEN u.userType = 'admin' THEN (
               SELECT JSON_OBJECT(
                 'id', a.id,
-                'staffCode', a.staff_code,
-                'fullName', a.full_name,
+                'staffCode', a.staffCode,
+                'fullName', a.fullName,
                 'phone', a.phone,
                 'role', a.role,
                 'department', a.department,
-                'avatarPath', a.avatar_path,
-                'created_at', a.created_at
+                'avatarPath', a.avatarPath,
+                'createdAt', a.createdAt
               )
               FROM admins a 
-              WHERE a.user_id = u.id
+              WHERE a.userId = u.id
             )
-            WHEN u.user_type = 'student' THEN (
+            WHEN u.userType = 'student' THEN (
               SELECT JSON_OBJECT(
                 'id', s.id,
-                'studentCode', s.student_code,
-                'fullName', s.full_name,
+                'studentCode', s.studentCode,
+                'fullName', s.fullName,
                 'gender', s.gender,
-                'birthDate', s.birth_date,
+                'birthDate', s.birthDate,
                 'phone', s.phone,
                 'role', s.role,
                 'address', s.address,
@@ -166,13 +166,13 @@ export class AdminService {
                 'ward', s.ward,
                 'faculty', s.faculty,
                 'major', s.major,
-                'class_name', s.class_name,
-                'avatarPath', s.avatar_path,
+                'className', s.className,
+                'avatarPath', s.avatarPath,
                 'status', s.status,
-                'created_at', s.created_at
+                'createdAt', s.createdAt
               )
               FROM students s 
-              WHERE s.user_id = u.id
+              WHERE s.userId = u.id
             )
           END as profile
         FROM users u

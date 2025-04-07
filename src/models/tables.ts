@@ -4,40 +4,40 @@ export const createTablesSQL = `
         id INT AUTO_INCREMENT PRIMARY KEY,
         email VARCHAR(100) UNIQUE NOT NULL,
         password VARCHAR(255),
-        user_type ENUM('admin', 'student') NOT NULL,
-        refresh_token TEXT,
-        reset_password_token TEXT,
-        reset_password_expires TIMESTAMP NULL,
+        userType ENUM('admin', 'student') NOT NULL,
+        refreshToken TEXT,
+        resetPasswordToken TEXT,
+        resetPasswordExpires TIMESTAMP NULL,
         status ENUM('active', 'inactive','pending', 'blocked') DEFAULT 'active',
-        last_login TIMESTAMP NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        lastLogin TIMESTAMP NULL,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     -- 2. ADMIN PROFILE
     CREATE TABLE IF NOT EXISTS admins (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT UNIQUE,
-        staff_code VARCHAR(20) UNIQUE NOT NULL,
-        full_name VARCHAR(100) NOT NULL,
+        userId INT UNIQUE,
+        staffCode VARCHAR(20) UNIQUE NOT NULL,
+        fullName VARCHAR(100) NOT NULL,
         phone VARCHAR(15) UNIQUE,
         role ENUM('super_admin', 'admin', 'staff') NOT NULL,
         department VARCHAR(100),
-        avatar_path TEXT,
+        avatarPath TEXT,
         status ENUM('active', 'inactive','pending', 'blocked') DEFAULT 'active',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     -- 3. STUDENT PROFILE
     CREATE TABLE IF NOT EXISTS students (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT UNIQUE,
-        student_code VARCHAR(20) UNIQUE NOT NULL,
-        full_name VARCHAR(100) NOT NULL,
+        userId INT UNIQUE,
+        studentCode VARCHAR(20) UNIQUE NOT NULL,
+        fullName VARCHAR(100) NOT NULL,
         gender ENUM('male', 'female', 'other') NOT NULL,
-        birth_date DATE NOT NULL,
+        birthDate DATE NOT NULL,
         role ENUM('student') NOT NULL DEFAULT 'student',
         
         -- Thông tin liên lạc
@@ -53,118 +53,118 @@ export const createTablesSQL = `
         -- Thông tin học vụ
         faculty VARCHAR(100) NOT NULL,
         major VARCHAR(100) NOT NULL,
-        class_name VARCHAR(50) NOT NULL,
+        className VARCHAR(50) NOT NULL,
         
         -- Ảnh chân dung
-        avatar_path TEXT,
+        avatarPath TEXT,
         status ENUM('pending', 'active', 'inactive', 'blocked') DEFAULT 'pending',
         
         -- Metadata
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     -- 4. DORMITORY MANAGEMENT
     CREATE TABLE IF NOT EXISTS buildings (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
-        total_floors INT NOT NULL,
+        totalFloors INT NOT NULL,
         description TEXT,
         status ENUM('active', 'inactive', 'maintenance') DEFAULT 'active',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     CREATE TABLE IF NOT EXISTS rooms (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        building_id INT,
-        room_number VARCHAR(20) NOT NULL,
-        floor_number INT NOT NULL,
-        room_type VARCHAR(20) NOT NULL,
+        buildingId INT,
+        roomNumber VARCHAR(20) NOT NULL,
+        floorNumber INT NOT NULL,
+        roomType VARCHAR(20) NOT NULL,
         capacity INT NOT NULL,
-        current_occupancy INT DEFAULT 0,
-        price_per_month DECIMAL(10,2) NOT NULL,
+        currentOccupancy INT DEFAULT 0,
+        pricePerMonth DECIMAL(10,2) NOT NULL,
         description TEXT,
-        room_image_path TEXT,
+        roomImagePath TEXT,
         status ENUM('available', 'full', 'maintenance') DEFAULT 'available',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_room (building_id, room_number),
-        FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE CASCADE
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_room (buildingId, roomNumber),
+        FOREIGN KEY (buildingId) REFERENCES buildings(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     CREATE TABLE IF NOT EXISTS beds (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        room_id INT,
-        bed_number VARCHAR(10) NOT NULL,
+        roomId INT,
+        bedNumber VARCHAR(10) NOT NULL,
         description TEXT,
-        bed_image_path TEXT,
+        bedImagePath TEXT,
         status ENUM('available', 'occupied', 'maintenance') DEFAULT 'available',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_bed (room_id, bed_number),
-        FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_bed (roomId, bedNumber),
+        FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     -- 5. CONTRACTS & BILLING
     CREATE TABLE IF NOT EXISTS contracts (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        contract_number VARCHAR(50) UNIQUE NOT NULL,
-        student_id INT,
-        room_id INT,
-        bed_id INT,
-        start_date DATE NOT NULL,
-        end_date DATE NOT NULL,
-        deposit_amount DECIMAL(10,2) NOT NULL,
-        monthly_fee DECIMAL(10,2) NOT NULL,
+        contractNumber VARCHAR(50) UNIQUE NOT NULL,
+        studentId INT,
+        roomId INT,
+        bedId INT,
+        startDate DATE NOT NULL,
+        endDate DATE NOT NULL,
+        depositAmount DECIMAL(10,2) NOT NULL,
+        monthlyFee DECIMAL(10,2) NOT NULL,
         status ENUM('active', 'expired', 'terminated') DEFAULT 'active',
-        created_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-        FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
-        FOREIGN KEY (bed_id) REFERENCES beds(id) ON DELETE CASCADE,
-        FOREIGN KEY (created_by) REFERENCES admins(id)
+        createdBy INT,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (studentId) REFERENCES students(id) ON DELETE CASCADE,
+        FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE CASCADE,
+        FOREIGN KEY (bedId) REFERENCES beds(id) ON DELETE CASCADE,
+        FOREIGN KEY (createdBy) REFERENCES admins(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     CREATE TABLE IF NOT EXISTS invoices (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        invoice_number VARCHAR(50) UNIQUE NOT NULL,
-        contract_id INT,
-        student_id INT,
-        room_id INT,
-        invoice_month DATE NOT NULL,
-        due_date DATE NOT NULL,
-        room_fee DECIMAL(10,2) NOT NULL,
-        electric_fee DECIMAL(10,2) DEFAULT 0,
-        water_fee DECIMAL(10,2) DEFAULT 0,
-        service_fee DECIMAL(10,2) DEFAULT 0,
-        total_amount DECIMAL(10,2) NOT NULL,
-        payment_status ENUM('pending', 'paid', 'overdue') DEFAULT 'pending',
-        payment_date TIMESTAMP NULL,
-        payment_method VARCHAR(50),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
-        FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-        FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+        invoiceNumber VARCHAR(50) UNIQUE NOT NULL,
+        contractId INT,
+        studentId INT,
+        roomId INT,
+        invoiceMonth DATE NOT NULL,
+        dueDate DATE NOT NULL,
+        roomFee DECIMAL(10,2) NOT NULL,
+        electricFee DECIMAL(10,2) DEFAULT 0,
+        waterFee DECIMAL(10,2) DEFAULT 0,
+        serviceFee DECIMAL(10,2) DEFAULT 0,
+        totalAmount DECIMAL(10,2) NOT NULL,
+        paymentStatus ENUM('pending', 'paid', 'overdue') DEFAULT 'pending',
+        paymentDate TIMESTAMP NULL,
+        paymentMethod VARCHAR(50),
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (contractId) REFERENCES contracts(id) ON DELETE CASCADE,
+        FOREIGN KEY (studentId) REFERENCES students(id) ON DELETE CASCADE,
+        FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     -- 6. MAINTENANCE REQUESTS
     CREATE TABLE IF NOT EXISTS maintenance_requests (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        request_number VARCHAR(50) UNIQUE NOT NULL,
-        student_id INT,
-        room_id INT,
-        request_type VARCHAR(50) NOT NULL,
+        requestNumber VARCHAR(50) UNIQUE NOT NULL,
+        studentId INT,
+        roomId INT,
+        requestType VARCHAR(50) NOT NULL,
         description TEXT NOT NULL,
-        image_paths TEXT,
+        imagePaths TEXT,
         priority ENUM('low', 'normal', 'high', 'urgent') DEFAULT 'normal',
         status ENUM('pending', 'processing', 'completed', 'rejected') DEFAULT 'pending',
-        assigned_to INT,
-        resolved_at TIMESTAMP NULL,
-        resolution_note TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-        FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
-        FOREIGN KEY (assigned_to) REFERENCES admins(id)
+        assignedTo INT,
+        resolvedAt TIMESTAMP NULL,
+        resolutionNote TEXT,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (studentId) REFERENCES students(id) ON DELETE CASCADE,
+        FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE CASCADE,
+        FOREIGN KEY (assignedTo) REFERENCES admins(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     -- 7. NOTIFICATIONS & LOGS
@@ -173,34 +173,34 @@ export const createTablesSQL = `
         title VARCHAR(200) NOT NULL,
         content TEXT NOT NULL,
         type VARCHAR(50),
-        sender_id INT,
-        recipient_type ENUM('admin', 'student', 'all') NOT NULL,
-        recipient_id INT,
-        is_read BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+        senderId INT,
+        recipientType ENUM('admin', 'student', 'all') NOT NULL,
+        recipientId INT,
+        isRead BOOLEAN DEFAULT FALSE,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (senderId) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     CREATE TABLE IF NOT EXISTS activity_logs (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT,
+        userId INT,
         action VARCHAR(100) NOT NULL,
-        entity_type VARCHAR(50),
-        entity_id INT,
+        entityType VARCHAR(50),
+        entityId INT,
         description TEXT,
-        ip_address VARCHAR(45),
-        user_agent TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ipAddress VARCHAR(45),
+        userAgent TEXT,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     -- Create indexes
-    CREATE INDEX idx_users_email ON users(email);
-    CREATE INDEX idx_students_student_code ON students(student_code);
-    CREATE INDEX idx_admins_staff_code ON admins(staff_code);
-    CREATE INDEX idx_contracts_student_id ON contracts(student_id);
-    CREATE INDEX idx_invoices_student_id ON invoices(student_id);
-    CREATE INDEX idx_maintenance_requests_student_id ON maintenance_requests(student_id);
-    CREATE INDEX idx_notifications_recipient_id ON notifications(recipient_id);
-    CREATE INDEX idx_activity_logs_user_id ON activity_logs(user_id);
+    CREATE INDEX idxUsersEmail ON users(email);
+    CREATE INDEX idxStudentsStudentCode ON students(studentCode);
+    CREATE INDEX idxAdminsStaffCode ON admins(staffCode);
+    CREATE INDEX idxContractsStudentId ON contracts(studentId);
+    CREATE INDEX idxInvoicesStudentId ON invoices(studentId);
+    CREATE INDEX idxMaintenanceRequestsStudentId ON maintenance_requests(studentId);
+    CREATE INDEX idxNotificationsRecipientId ON notifications(recipientId);
+    CREATE INDEX idxActivityLogsUserId ON activity_logs(userId);
 `;

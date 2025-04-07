@@ -7,16 +7,16 @@ interface User extends RowDataPacket {
   id: number;
   email: string;
   password: string;
-  user_type: string;
+  userType: string;
   status: string;
 }
 
 interface Student extends RowDataPacket {
   id: number;
-  user_id: number;
-  student_code: string;
-  full_name: string;
-  birth_date: string;
+  userId: number;
+  studentCode: string;
+  fullName: string;
+  birthDate: string;
   status: string;
 }
 
@@ -57,7 +57,7 @@ export class StudentService {
 
       // Tạo user với password rỗng
       const [userResult] = await connection.query(
-        'INSERT INTO users (email, user_type, status) VALUES (?, ?, ?)',
+        'INSERT INTO users (email, userType, status) VALUES (?, ?, ?)',
         [data.email, USER_TYPES.STUDENT, STATUS.PENDING]
       );
 
@@ -75,11 +75,11 @@ export class StudentService {
       // Tạo student profile với status pending
       await connection.query(
         `INSERT INTO students (
-          user_id, student_code, full_name, birth_date, status,
+          userId, studentCode, fullName, birthDate, status,
           gender, phone, email,
           province, district, ward, address,
-          faculty, major, class_name,
-          avatar_path
+          faculty, major, className,
+          avatarPath
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           userId, data.studentCode, data.fullName, data.birthDate, STATUS.PENDING,
@@ -119,7 +119,7 @@ export class StudentService {
       const student = students[0];
 
       // Format ngày sinh thành password: DD/MM/YYYY
-      const birthDate = new Date(student.birth_date);
+      const birthDate = new Date(student.birthDate);
       const password = birthDate.toLocaleDateString('vi-VN', {
         day: '2-digit',
         month: '2-digit',
@@ -131,7 +131,7 @@ export class StudentService {
       // Cập nhật password và status của user
       await connection.query(
         'UPDATE users SET password = ?, status = ? WHERE id = ?',
-        [hashedPassword, STATUS.ACTIVE, student.user_id]
+        [hashedPassword, STATUS.ACTIVE, student.userId]
       );
 
       // Cập nhật status của student
@@ -158,11 +158,11 @@ export class StudentService {
           s.*,
           u.email as email,
           u.status as status,
-          u.last_login,
-          u.created_at as createdAt
+          u.lastLogin,
+          u.createdAt as createdAt
         FROM students s
-        LEFT JOIN users u ON s.user_id = u.id
-        ORDER BY s.created_at DESC
+        LEFT JOIN users u ON s.userId = u.id
+        ORDER BY s.createdAt DESC
       `);
 
       return rows as any[];
