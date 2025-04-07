@@ -16,60 +16,157 @@ interface Student extends RowDataPacket {
   user_id: number;
   student_code: string;
   full_name: string;
+  birth_date: string;
+  status: string;
 }
 
+interface CreateStudentRequest {
+  email: string;
+  studentCode: string;
+  fullName: string;
+  birthDate: Date;
+  gender: 'male' | 'female' | 'other';
+  phone: string;
+  province: string;
+  district: string;
+  ward: string;
+  address: string;
+  faculty: string;
+  major: string;
+  className: string;
+  avatarPath?: string;
+}
+
+const requiredFields = [
+  'email', 'studentCode', 'fullName', 'birthDate', 'gender',
+  'phone', 'province', 'district', 'ward',
+  'address', 'faculty', 'major', 'className'
+];
+
 export class StudentService {
-  static async createStudent(data: {
-    email: string;
-    password: string;
-    studentCode: string;
-    fullName: string;
-  }): Promise<{ id: number }> {
+  static async createStudent(data: CreateStudentRequest): Promise<{ id: number }> {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
 
-      // Kiểm tra email đã tồn tại chưa
-      const [existingUsers] = await connection.query<User[]>(
-        'SELECT id FROM users WHERE email = ?',
-        [data.email]
-      );
+      console.log('Creating user with data:', {
+        email: data.email,
+        userType: USER_TYPES.STUDENT,
+        status: STATUS.INACTIVE
+      });
 
-      if (existingUsers.length > 0) {
-        throw new Error('Email đã tồn tại');
-      }
-
-      // Kiểm tra mã sinh viên đã tồn tại chưa
-      const [existingStudents] = await connection.query<Student[]>(
-        'SELECT id FROM students WHERE student_code = ?',
-        [data.studentCode]
-      );
-
-      if (existingStudents.length > 0) {
-        throw new Error('Mã sinh viên đã tồn tại');
-      }
-
-      // Hash mật khẩu
-      const hashedPassword = await bcrypt.hash(data.password, 10);
-
-      // Tạo user mới
+      // Tạo user với password rỗng
       const [userResult] = await connection.query(
-        'INSERT INTO users (email, password, user_type, status) VALUES (?, ?, ?, ?)',
-        [data.email, hashedPassword, USER_TYPES.STUDENT, STATUS.ACTIVE]
+        'INSERT INTO users (email, user_type, status) VALUES (?, ?, ?)',
+        [data.email, USER_TYPES.STUDENT, STATUS.PENDING]
       );
 
       const userId = (userResult as any).insertId;
+      console.log('Created user with ID:', userId);
 
-      // Tạo profile sinh viên
+      console.log('Creating student with data:', {
+        userId,
+        studentCode: data.studentCode,
+        fullName: data.fullName,
+        status: STATUS.PENDING
+        // ... other fields
+      });
+
+      // Tạo student profile với status pending
       await connection.query(
-        'INSERT INTO students (user_id, student_code, full_name) VALUES (?, ?, ?)',
-        [userId, data.studentCode, data.fullName]
+        `INSERT INTO students (
+          user_id, student_code, full_name, birth_date, status,
+          gender, phone, email,
+          province, district, ward, address,
+          faculty, major, class_name,
+          avatar_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId, data.studentCode, data.fullName, data.birthDate, STATUS.PENDING,
+          data.gender, data.phone, data.email,
+          data.province, data.district, data.ward, data.address,
+          data.faculty, data.major, data.className,
+          data.avatarPath || null
+        ]
       );
 
       await connection.commit();
       return { id: userId };
     } catch (error) {
       await connection.rollback();
+      console.error('Error in createStudent:', error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  static async activateStudent(studentId: number): Promise<void> {
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      // Lấy thông tin sinh viên
+      const [students] = await connection.query<Student[]>(
+        'SELECT * FROM students WHERE id = ?',
+        [studentId]
+      );
+
+      if (!students.length) {
+        throw new Error('Không tìm thấy sinh viên');
+      }
+
+      const student = students[0];
+
+      // Format ngày sinh thành password: DD/MM/YYYY
+      const birthDate = new Date(student.birth_date);
+      const password = birthDate.toLocaleDateString('vi-VN', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Cập nhật password và status của user
+      await connection.query(
+        'UPDATE users SET password = ?, status = ? WHERE id = ?',
+        [hashedPassword, STATUS.ACTIVE, student.user_id]
+      );
+
+      // Cập nhật status của student
+      await connection.query(
+        'UPDATE students SET status = ? WHERE id = ?',
+        ['active', studentId]
+      );
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  static async getAllStudents(): Promise<any[]> {
+    const connection = await pool.getConnection();
+    try {
+      // Join bảng users và students để lấy đầy đủ thông tin
+      const [rows] = await connection.query(`
+        SELECT 
+          s.*,
+          u.email as email,
+          u.status as status,
+          u.last_login,
+          u.created_at as createdAt
+        FROM students s
+        LEFT JOIN users u ON s.user_id = u.id
+        ORDER BY s.created_at DESC
+      `);
+
+      return rows as any[];
+    } catch (error) {
       throw error;
     } finally {
       connection.release();

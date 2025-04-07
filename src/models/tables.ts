@@ -3,12 +3,12 @@ export const createTablesSQL = `
     CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
         email VARCHAR(100) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
+        password VARCHAR(255),
         user_type ENUM('admin', 'student') NOT NULL,
         refresh_token TEXT,
         reset_password_token TEXT,
         reset_password_expires TIMESTAMP NULL,
-        status ENUM('active', 'inactive', 'blocked') DEFAULT 'active',
+        status ENUM('active', 'inactive','pending', 'blocked') DEFAULT 'active',
         last_login TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -24,6 +24,7 @@ export const createTablesSQL = `
         role ENUM('super_admin', 'admin', 'staff') NOT NULL,
         department VARCHAR(100),
         avatar_path TEXT,
+        status ENUM('active', 'inactive','pending', 'blocked') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -36,39 +37,34 @@ export const createTablesSQL = `
         student_code VARCHAR(20) UNIQUE NOT NULL,
         full_name VARCHAR(100) NOT NULL,
         gender ENUM('male', 'female', 'other') NOT NULL,
-        birth_date DATE,
-        phone VARCHAR(15) UNIQUE,
-        address TEXT,
-        province VARCHAR(100),
-        district VARCHAR(100),
-        ward VARCHAR(100),
-        department VARCHAR(100),
-        major VARCHAR(100),
-        class_name VARCHAR(50),
-        school_year INT,
+        birth_date DATE NOT NULL,
+        role ENUM('student') NOT NULL DEFAULT 'student',
+        
+        -- Thông tin liên lạc
+        phone VARCHAR(15) UNIQUE NOT NULL,
+        email VARCHAR(100) NOT NULL,
+        
+        -- Thông tin địa chỉ
+        province VARCHAR(100) NOT NULL,
+        district VARCHAR(100) NOT NULL,
+        ward VARCHAR(100) NOT NULL,
+        address TEXT NOT NULL,
+        
+        -- Thông tin học vụ
+        faculty VARCHAR(100) NOT NULL,
+        major VARCHAR(100) NOT NULL,
+        class_name VARCHAR(50) NOT NULL,
+        
+        -- Ảnh chân dung
         avatar_path TEXT,
-        citizen_id VARCHAR(20) UNIQUE,
-        emergency_contact_name VARCHAR(100),
-        emergency_contact_phone VARCHAR(15),
-        emergency_contact_relationship VARCHAR(50),
-        status ENUM('active', 'graduated', 'suspended') DEFAULT 'active',
+        status ENUM('pending', 'active', 'inactive', 'blocked') DEFAULT 'pending',
+        
+        -- Metadata
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    ALTER TABLE students
-        ADD COLUMN personal_email VARCHAR(100),
-        ADD COLUMN school_email VARCHAR(100),
-        ADD COLUMN ethnicity VARCHAR(50),
-        ADD COLUMN religion VARCHAR(50),
-        ADD COLUMN father_name VARCHAR(100),
-        ADD COLUMN father_phone VARCHAR(15),
-        ADD COLUMN father_address_same_as_student BOOLEAN DEFAULT TRUE,
-        ADD COLUMN father_address TEXT,
-        ADD COLUMN mother_name VARCHAR(100),
-        ADD COLUMN mother_phone VARCHAR(15),
-        ADD COLUMN mother_address_same_as_student BOOLEAN DEFAULT TRUE,
-        ADD COLUMN mother_address TEXT;
+
     -- 4. DORMITORY MANAGEMENT
     CREATE TABLE IF NOT EXISTS buildings (
         id INT AUTO_INCREMENT PRIMARY KEY,

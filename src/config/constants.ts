@@ -18,6 +18,7 @@ export const USER_TYPES = {
 };
 
 export const STATUS = {
+  PENDING: 'pending',
   ACTIVE: 'active',
   INACTIVE: 'inactive',
   BLOCKED: 'blocked'

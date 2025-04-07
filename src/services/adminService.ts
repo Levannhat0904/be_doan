@@ -140,12 +140,12 @@ export class AdminService {
             WHEN u.user_type = 'admin' THEN (
               SELECT JSON_OBJECT(
                 'id', a.id,
-                'staff_code', a.staff_code,
-                'full_name', a.full_name,
+                'staffCode', a.staff_code,
+                'fullName', a.full_name,
                 'phone', a.phone,
                 'role', a.role,
                 'department', a.department,
-                'avatar_path', a.avatar_path,
+                'avatarPath', a.avatar_path,
                 'created_at', a.created_at
               )
               FROM admins a 
@@ -154,24 +154,20 @@ export class AdminService {
             WHEN u.user_type = 'student' THEN (
               SELECT JSON_OBJECT(
                 'id', s.id,
-                'student_code', s.student_code,
-                'full_name', s.full_name,
+                'studentCode', s.student_code,
+                'fullName', s.full_name,
                 'gender', s.gender,
-                'birth_date', s.birth_date,
+                'birthDate', s.birth_date,
                 'phone', s.phone,
+                'role', s.role,
                 'address', s.address,
                 'province', s.province,
                 'district', s.district,
                 'ward', s.ward,
-                'department', s.department,
+                'faculty', s.faculty,
                 'major', s.major,
                 'class_name', s.class_name,
-                'school_year', s.school_year,
-                'avatar_path', s.avatar_path,
-                'citizen_id', s.citizen_id,
-                'emergency_contact_name', s.emergency_contact_name,
-                'emergency_contact_phone', s.emergency_contact_phone,
-                'emergency_contact_relationship', s.emergency_contact_relationship,
+                'avatarPath', s.avatar_path,
                 'status', s.status,
                 'created_at', s.created_at
               )
