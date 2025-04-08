@@ -7,6 +7,7 @@ import initializeDatabase from './scripts/initDb';
 import authRoutes from './routes/authRoutes';
 import adminRoutes from './routes/adminRoutes';
 import studentRoutes from './routes/studentRoutes';
+import administrativeRoutes from './routes/administrativeRoutes';
 dotenv.config();
 
 const app = express();
@@ -24,6 +25,7 @@ app.use('/uploads', express.static('uploads'));
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/student', studentRoutes);
+app.use('/api/administrative', administrativeRoutes);
 
 // Basic route
 app.get('/', (req, res) => {
