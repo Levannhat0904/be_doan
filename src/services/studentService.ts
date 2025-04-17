@@ -48,13 +48,6 @@ export class StudentService {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
-
-      console.log('Creating user with data:', {
-        email: data.email,
-        userType: USER_TYPES.STUDENT,
-        status: STATUS.INACTIVE
-      });
-
       // Tạo user với password rỗng
       const [userResult] = await connection.query(
         'INSERT INTO users (email, userType, status) VALUES (?, ?, ?)',
@@ -62,15 +55,6 @@ export class StudentService {
       );
 
       const userId = (userResult as any).insertId;
-      console.log('Created user with ID:', userId);
-
-      console.log('Creating student with data:', {
-        userId,
-        studentCode: data.studentCode,
-        fullName: data.fullName,
-        status: STATUS.PENDING
-        // ... other fields
-      });
 
       // Tạo student profile với status pending
       await connection.query(
@@ -149,27 +133,155 @@ export class StudentService {
     }
   }
 
-  static async getAllStudents(): Promise<any[]> {
+  static async rejectStudent(studentId: number): Promise<void> {
     const connection = await pool.getConnection();
     try {
-      // Join bảng users và students để lấy đầy đủ thông tin
-      const [rows] = await connection.query(`
-        SELECT 
-          s.*,
-          u.email as email,
-          u.status as status,
-          u.lastLogin,
-          u.createdAt as createdAt
+      await connection.beginTransaction();
+
+      // Lấy thông tin sinh viên
+      const [students] = await connection.query<Student[]>(
+        'SELECT * FROM students WHERE id = ?',
+        [studentId]
+      );
+
+      if (!students.length) {
+        throw new Error('Không tìm thấy sinh viên');
+      }
+
+      const student = students[0];
+
+      // Cập nhật status của user thành inactive
+      await connection.query(
+        'UPDATE users SET status = ? WHERE id = ?',
+        [STATUS.INACTIVE, student.userId]
+      );
+
+      // Cập nhật status của student thành inactive
+      await connection.query(
+        'UPDATE students SET status = ? WHERE id = ?',
+        ['inactive', studentId]
+      );
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  static async getAllStudents(
+    page: number = 1,
+    limit: number = 10,
+    search: string = ''
+  ): Promise<{ students: any[], total: number }> {
+    const connection = await pool.getConnection();
+    try {
+      const offset = (page - 1) * limit;
+      const searchPattern = `%${search}%`;
+
+      // Log để kiểm tra giá trị đầu vào
+      console.log('Search params:', { page, limit, search, offset, searchPattern });
+
+      let whereClause = '1=1'; // Always true if no search
+      let queryParams = [];
+
+      if (search && search.trim()) {
+        whereClause = `(
+          s.studentCode LIKE ? OR
+          s.fullName LIKE ? OR
+          s.phone LIKE ? OR
+          s.email LIKE ? OR
+          s.className LIKE ? OR
+          s.faculty LIKE ? OR
+          s.major LIKE ?
+        )`;
+        queryParams = Array(7).fill(searchPattern);
+      }
+
+      // Log câu query count
+      const countQuery = `
+        SELECT COUNT(*) as total
         FROM students s
         LEFT JOIN users u ON s.userId = u.id
-        ORDER BY s.createdAt DESC
-      `);
+        WHERE ${whereClause}
+      `;
+      console.log('Count Query:', countQuery);
+      console.log('Count Params:', queryParams);
 
-      return rows as any[];
+      const [countResult] = await connection.query(countQuery, queryParams);
+      const total = (countResult as any)[0].total;
+
+      // Log câu query select
+      const selectQuery = `
+        SELECT 
+          s.*,
+          u.email,
+          u.status as userStatus,
+          u.lastLogin,
+          u.createdAt as userCreatedAt
+        FROM students s
+        LEFT JOIN users u ON s.userId = u.id
+        WHERE ${whereClause}
+        ORDER BY s.createdAt DESC
+        LIMIT ? OFFSET ?
+      `;
+      const selectParams = [...queryParams, limit, offset];
+      console.log('Select Query:', selectQuery);
+      console.log('Select Params:', selectParams);
+
+      const [students] = await connection.query(selectQuery, selectParams);
+
+      // Log kết quả
+      console.log('Total records:', total);
+
+      return {
+        students: students as any[],
+        total
+      };
+    } catch (error) {
+      console.error('Error in getAllStudents:', error);
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  static async getStudentById(id: number): Promise<Student> {
+    const connection = await pool.getConnection();
+    try {
+      const [students] = await connection.query<Student[]>(
+        'SELECT * FROM students WHERE id = ?',
+        [id]
+      );
+
+      if (!students.length) {
+        throw new Error('Không tìm thấy sinh viên');
+      }
+
+      return students[0];
     } catch (error) {
       throw error;
     } finally {
       connection.release();
     }
   }
+
+  static async updateStudentStatus(id: number, status: string): Promise<void> {
+    const connection = await pool.getConnection();
+    try {
+      await connection.query(
+        'UPDATE students SET status = ? WHERE id = ?',
+        [status, id]
+      );
+    } catch (error) {
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+
+
 } 

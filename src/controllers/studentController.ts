@@ -113,6 +113,7 @@ export class StudentController {
         success: true,
         message: 'Kích hoạt tài khoản thành công'
       });
+
     } catch (error) {
       res.status(400).json({
         success: false,
@@ -121,12 +122,45 @@ export class StudentController {
     }
   };
 
-  getAllStudents: RequestHandler = async (req, res) => {
+  rejectStudent: RequestHandler = async (req, res) => {
     try {
-      const students = await StudentService.getAllStudents();
+      const { id } = req.params;
+
+      await StudentService.rejectStudent(Number(id));
       res.json({
         success: true,
-        data: students
+        message: 'Từ chối tài khoản thành công'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Lỗi từ chối tài khoản'
+      });
+    }
+  };
+
+
+  getAllStudents: RequestHandler = async (req, res) => {
+    try {
+      const page = Number(req.query.page) || 1;
+      const limit = Number(req.query.limit) || 10;
+      const search = (req.query.search as string) || '';
+
+      console.log('Controller received:', { page, limit, search }); // Debug log
+
+      const { students, total } = await StudentService.getAllStudents(page, limit, search);
+
+      const totalPages = Math.ceil(total / limit);
+
+      res.json({
+        success: true,
+        data: students,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalItems: total,
+          itemsPerPage: limit
+        }
       });
     } catch (error) {
       res.status(400).json({
@@ -135,4 +169,38 @@ export class StudentController {
       });
     }
   };
+
+  getStudentById: RequestHandler = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const student = await StudentService.getStudentById(Number(id));
+      res.json({
+        success: true,
+        data: student
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Lỗi lấy thông tin sinh viên'
+      });
+    }
+  };
+
+  updateStudentStatus: RequestHandler = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      await StudentService.updateStudentStatus(Number(id), status);
+      res.json({
+        success: true,
+        message: 'Cập nhật trạng thái thành công'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Lỗi cập nhật trạng thái'
+      });
+    }
+  };
+
 } 

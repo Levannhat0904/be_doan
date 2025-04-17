@@ -74,8 +74,11 @@ const uploadMiddleware = (req: express.Request, res: express.Response, next: exp
 };
 
 // API routes
-router.post('/create', uploadMiddleware, studentController.createStudent);
+router.post('/', uploadMiddleware, studentController.createStudent);
 router.patch('/:id/activate', authMiddleware, isAdmin, studentController.activateStudent);
-router.get('/list', authMiddleware, isAdmin, studentController.getAllStudents);
+router.patch('/:id/reject', authMiddleware, isAdmin, studentController.rejectStudent);
+router.get('/', authMiddleware, isAdmin, studentController.getAllStudents);
+router.get('/:id', authMiddleware, isAdmin, studentController.getStudentById);
+router.put('/:id/status', authMiddleware, isAdmin, studentController.updateStudentStatus);
 
 export default router; 

@@ -80,18 +80,29 @@ export const createTablesSQL = `
         buildingId INT,
         roomNumber VARCHAR(20) NOT NULL,
         floorNumber INT NOT NULL,
-        roomType VARCHAR(20) NOT NULL,
+        roomType ENUM('male', 'female') NOT NULL, 
         capacity INT NOT NULL,
         currentOccupancy INT DEFAULT 0,
         pricePerMonth DECIMAL(10,2) NOT NULL,
         description TEXT,
         roomImagePath TEXT,
+        amenities JSON, 
+        lastCleaned TIMESTAMP NULL, 
         status ENUM('available', 'full', 'maintenance') DEFAULT 'available',
         createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY unique_room (buildingId, roomNumber),
         FOREIGN KEY (buildingId) REFERENCES buildings(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+    -- Thêm vào file tables.ts
+CREATE TABLE IF NOT EXISTS room_images (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    roomId INT NOT NULL,
+    imagePath VARCHAR(255) NOT NULL,
+    isMain BOOLEAN DEFAULT false,
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     CREATE TABLE IF NOT EXISTS beds (
         id INT AUTO_INCREMENT PRIMARY KEY,
         roomId INT,

@@ -167,3 +167,11 @@
         contracts liên kết nhiều bảng (students, rooms, beds, admins)
         invoices liên kết với contracts và thông tin liên quan
         Các bảng còn lại liên kết theo chức năng tương ứng
+GET /api/student/:id - Lấy thông tin chi tiết sinh viên
+POST /api/room/assign - Phân phòng cho sinh viên
+POST /api/room/cancel - Hủy phòng của sinh viên
+API lấy thông tin sinh viên
+API phân phòng
+API hủy phòng
+API lấy thông tin vi phạm
+API lấy thông tin hóa đơn
