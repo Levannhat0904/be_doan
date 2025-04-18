@@ -5,6 +5,7 @@ import studentRoutes from './studentRoutes';
 import administrativeRoutes from './administrativeRoutes';
 import roomRoutes from './roomRoutes';
 import buildingRoutes from './buildingRoutes';
+import invoiceRoutes from './invoiceRoutes';
 
 const router = express.Router();
 
@@ -15,5 +16,6 @@ router.use('/student', studentRoutes);
 router.use('/administrative', administrativeRoutes);
 router.use('/rooms', roomRoutes);
 router.use('/buildings', buildingRoutes);
+router.use('/', invoiceRoutes);
 
 export default router; 

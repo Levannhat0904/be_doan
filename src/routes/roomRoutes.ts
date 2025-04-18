@@ -4,7 +4,9 @@ import {
   getRooms,
   addRoom,
   updateRoom,
-  deleteRoom
+  deleteRoom,
+  getRoomDetail,
+  updateRoomStatus
 } from '../controllers/roomController';
 import { authMiddleware } from '../middlewares/authMiddleware';
 
@@ -28,6 +30,16 @@ router.put('/:roomId', authMiddleware, uploadRoomImages, (req, res, next) => {
 // Delete room
 router.delete('/:roomId', authMiddleware, (req, res, next) => {
   deleteRoom(req, res).catch(next);
+});
+
+// Get room detail
+router.get('/:id/detail', authMiddleware, (req, res, next) => {
+  getRoomDetail(req, res).catch(next);
+});
+
+// Update room status
+router.patch('/:roomId/status', authMiddleware, (req, res, next) => {
+  updateRoomStatus(req, res).catch(next);
 });
 
 export default router; 

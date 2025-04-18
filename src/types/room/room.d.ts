@@ -40,3 +40,54 @@ export interface RoomResponse {
     occupancyRate: number;
   };
 }
+
+export interface RoomDetail {
+  room: Room;
+  residents: {
+    id: number;
+    studentCode: string;
+    fullName: string;
+    gender: string;
+    phone: string;
+    email: string;
+    joinDate: Date;
+    endDate: Date;
+    bedNumber: string;
+    status: string;
+    faculty: string;
+    major: string;
+    avatarPath?: string;
+    paymentStatus: string;
+  }[];
+  maintenanceHistory: {
+    id: number;
+    date: Date;
+    type: string;
+    description: string;
+    cost: number;
+    staff: string;
+    status: string;
+  }[];
+  pendingRequests: {
+    id: number;
+    date: Date;
+    type: string;
+    description: string;
+    requestedBy: string;
+    status: string;
+    priority: string;
+  }[];
+  utilities: {
+    id: number;
+    month: string;
+    electricity: number;
+    water: number;
+    electricityCost: number;
+    waterCost: number;
+    otherFees: number;
+    totalCost: number;
+    dueDate: Date;
+    status: string;
+    paidDate?: Date;
+  }[];
+}

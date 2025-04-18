@@ -9,6 +9,8 @@
     "build": "tsc",
     "init-db": "ts-node src/scripts/initDb.ts",
     "seed-rooms": "ts-node src/scripts/seedRooms.ts",
+    "seed-students": "ts-node src/scripts/seedStudents.ts",
+    "seed-contracts": "ts-node src/scripts/seedContracts.ts",
     "lint": "eslint . --ext .ts",
     "test": "jest",
     "create-admin": "ts-node src/scripts/createFirstAdmin.ts"

@@ -114,6 +114,197 @@ export const getRooms = async (req: Request, res: Response) => {
   }
 };
 
+export const getRoomDetail = async (req: Request, res: Response) => {
+  try {
+    const roomId = req.params.id;
+
+    if (!roomId) {
+      return res.status(400).json({ message: 'Room ID is required' });
+    }
+
+    // Get room details
+    const roomQuery = `
+      SELECT r.*, b.name as buildingName 
+      FROM rooms r
+      JOIN buildings b ON r.buildingId = b.id
+      WHERE r.id = ?
+    `;
+
+    const [roomData] = await pool.query<RowDataPacket[]>(roomQuery, [roomId]);
+
+    if (!roomData || roomData.length === 0) {
+      return res.status(404).json({ message: 'Room not found' });
+    }
+
+    const room = {
+      id: roomData[0].id,
+      buildingId: roomData[0].buildingId,
+      buildingName: roomData[0].buildingName,
+      roomNumber: roomData[0].roomNumber,
+      floorNumber: roomData[0].floorNumber,
+      roomType: roomData[0].roomType,
+      capacity: roomData[0].capacity,
+      occupiedBeds: 0, // Sẽ được tính toán sau
+      pricePerMonth: roomData[0].pricePerMonth,
+      status: roomData[0].status,
+      description: roomData[0].description,
+      amenities: roomData[0].amenities ?
+        (typeof roomData[0].amenities === 'string' ?
+          JSON.parse(roomData[0].amenities) : roomData[0].amenities) : [],
+      lastCleaned: roomData[0].lastCleaned,
+      createdAt: roomData[0].createdAt,
+      updatedAt: roomData[0].updatedAt,
+      roomArea: 0, // Optional
+      notes: '' // Optional
+    };
+
+    // Đếm số giường đã được sử dụng
+    const occupiedBedsQuery = `
+      SELECT COUNT(*) as occupiedBeds
+      FROM beds
+      WHERE roomId = ? AND status = 'occupied'
+    `;
+
+    const [occupiedBedsData] = await pool.query<RowDataPacket[]>(occupiedBedsQuery, [roomId]);
+    room.occupiedBeds = occupiedBedsData[0].occupiedBeds;
+
+    // Get residents in the room
+    const residentsQuery = `
+      SELECT s.id, s.studentCode, s.fullName, s.gender, s.phone, s.email, 
+             c.startDate as joinDate, c.endDate, b.bedNumber, c.status,
+             s.faculty, s.major, s.avatarPath,
+             IFNULL(
+               (SELECT MAX(i.paymentStatus) 
+                FROM invoices i 
+                WHERE i.studentId = s.id AND i.paymentStatus = 'pending'), 'paid'
+             ) as paymentStatus
+      FROM contracts c
+      JOIN students s ON c.studentId = s.id
+      JOIN beds b ON c.bedId = b.id
+      WHERE c.roomId = ? AND c.status = 'active'
+    `;
+
+    const [residentsRows] = await pool.query<RowDataPacket[]>(residentsQuery, [roomId]);
+
+    const residents = residentsRows.map((resident) => ({
+      id: resident.id,
+      studentCode: resident.studentCode,
+      fullName: resident.fullName,
+      gender: resident.gender,
+      phone: resident.phone,
+      email: resident.email,
+      joinDate: resident.joinDate,
+      endDate: resident.endDate,
+      bedNumber: resident.bedNumber,
+      status: resident.status,
+      faculty: resident.faculty,
+      major: resident.major,
+      avatarPath: resident.avatarPath,
+      paymentStatus: resident.paymentStatus
+    }));
+
+    // Get maintenance history
+    const maintenanceQuery = `
+      SELECT m.id, m.createdAt as date, m.requestType as type, m.description, 
+              0 as cost, IFNULL(a.fullName, 'Not assigned') as staff, m.status
+      FROM maintenance_requests m
+      LEFT JOIN admins a ON m.assignedTo = a.id
+      WHERE m.roomId = ? AND m.status = 'completed'
+      ORDER BY m.createdAt DESC
+      LIMIT 10
+    `;
+
+    const [maintenanceRows] = await pool.query<RowDataPacket[]>(maintenanceQuery, [roomId]);
+
+    const maintenanceHistory = maintenanceRows.map((maintenance) => ({
+      id: maintenance.id,
+      date: maintenance.date,
+      type: maintenance.type,
+      description: maintenance.description,
+      cost: maintenance.cost,
+      staff: maintenance.staff,
+      status: maintenance.status
+    }));
+
+    // Get pending requests
+    const pendingRequestsQuery = `
+      SELECT m.id, m.createdAt as date, m.requestType as type, m.description, 
+             IFNULL(s.fullName, 'System') as requestedBy, 
+             m.status, m.priority
+      FROM maintenance_requests m
+      LEFT JOIN students s ON m.studentId = s.id
+      WHERE m.roomId = ? AND m.status IN ('pending', 'processing')
+      ORDER BY 
+        CASE 
+          WHEN m.priority = 'urgent' THEN 1
+          WHEN m.priority = 'high' THEN 2
+          WHEN m.priority = 'normal' THEN 3
+          WHEN m.priority = 'low' THEN 4
+          ELSE 5
+        END,
+        m.createdAt DESC
+    `;
+
+    const [pendingRows] = await pool.query<RowDataPacket[]>(pendingRequestsQuery, [roomId]);
+
+    const pendingRequests = pendingRows.map((request) => ({
+      id: request.id,
+      date: request.date,
+      type: request.type,
+      description: request.description,
+      requestedBy: request.requestedBy,
+      status: request.status,
+      priority: request.priority
+    }));
+
+    // Get utilities bills
+    const utilitiesQuery = `
+      SELECT i.id, 
+             DATE_FORMAT(i.invoiceMonth, '%m/%Y') as month, 
+             i.electricFee / 2000 as electricity, 
+             i.waterFee / 10000 as water, 
+             i.electricFee as electricityCost, 
+             i.waterFee as waterCost,
+             i.serviceFee as otherFees,
+             i.totalAmount as totalCost,
+             i.dueDate, i.paymentStatus as status, i.paymentDate as paidDate
+      FROM invoices i
+      WHERE i.roomId = ?
+      ORDER BY i.invoiceMonth DESC
+      LIMIT 6
+    `;
+
+    const [utilitiesRows] = await pool.query<RowDataPacket[]>(utilitiesQuery, [roomId]);
+
+    const utilities = utilitiesRows.map((utility) => ({
+      id: utility.id,
+      month: utility.month,
+      electricity: utility.electricity,
+      water: utility.water,
+      electricityCost: utility.electricityCost,
+      waterCost: utility.waterCost,
+      otherFees: utility.otherFees,
+      totalCost: utility.totalCost,
+      dueDate: utility.dueDate,
+      status: utility.status,
+      paidDate: utility.paidDate
+    }));
+
+    // Combine all data
+    const roomDetail = {
+      room,
+      residents,
+      maintenanceHistory,
+      pendingRequests,
+      utilities
+    };
+
+    res.status(200).json(roomDetail);
+  } catch (error: any) {
+    console.error('Error fetching room detail:', error);
+    res.status(500).json({ message: 'Error fetching room detail', error: error.message });
+  }
+};
 
 // Add Room
 export const addRoom = async (req: Request, res: Response) => {
@@ -332,6 +523,56 @@ export const deleteRoom = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: 'Lỗi khi xóa phòng'
+    });
+  }
+};
+
+// Update Room Status
+export const updateRoomStatus = async (req: Request, res: Response) => {
+  try {
+    const roomId = parseInt(req.params.roomId);
+    const { status } = req.body;
+
+    // Validate status
+    const validStatuses = ['available', 'full', 'maintenance'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Trạng thái không hợp lệ. Các trạng thái hợp lệ là: available, full, maintenance'
+      });
+    }
+
+    // Check if room exists
+    const [room] = await pool.query<RowDataPacket[]>(
+      'SELECT * FROM rooms WHERE id = ?',
+      [roomId]
+    );
+
+    if (!room.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy phòng'
+      });
+    }
+
+    // Update room status
+    await pool.query(
+      'UPDATE rooms SET status = ? WHERE id = ?',
+      [status, roomId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Cập nhật trạng thái phòng thành công',
+      data: { status }
+    });
+
+  } catch (error: any) {
+    console.error('Error updating room status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi cập nhật trạng thái phòng',
+      error: error.message
     });
   }
 };
