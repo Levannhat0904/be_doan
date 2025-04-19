@@ -94,6 +94,11 @@ export const createTablesSQL = `
         UNIQUE KEY unique_room (buildingId, roomNumber),
         FOREIGN KEY (buildingId) REFERENCES buildings(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+     -- Thêm cột roomArea (diện tích phòng) vào bảng rooms
+ALTER TABLE rooms ADD COLUMN roomArea FLOAT;
+
+-- Thêm cột notes (ghi chú) vào bảng rooms
+ALTER TABLE rooms ADD COLUMN notes TEXT;
     -- Thêm vào file tables.ts
 CREATE TABLE IF NOT EXISTS room_images (
     id INT AUTO_INCREMENT PRIMARY KEY,

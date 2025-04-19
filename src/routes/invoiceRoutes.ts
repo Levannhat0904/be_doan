@@ -27,7 +27,7 @@ router.post(
 );
 
 // Update invoice status
-router.patch(
+router.put(
   '/invoices/:invoiceId/status',
   authMiddleware,
   isAdmin,

@@ -395,25 +395,39 @@ export const addRoom = async (req: Request, res: Response) => {
 // Update Room
 export const updateRoom = async (req: Request, res: Response) => {
   try {
+    console.log('Starting room update, request body:', req.body);
+    console.log('Request params:', req.params);
     const roomId = parseInt(req.params.roomId);
+
+    if (isNaN(roomId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid room ID format'
+      });
+    }
+
     // Lấy dữ liệu cập nhật từ form
     const data = {
-      buildingId: parseInt(req.body.buildingId),
+      buildingId: req.body.buildingId ? parseInt(req.body.buildingId) : undefined,
       roomNumber: req.body.roomNumber,
-      floorNumber: parseInt(req.body.floorNumber),
+      floorNumber: req.body.floorNumber ? parseInt(req.body.floorNumber) : undefined,
       roomType: req.body.roomType,
-      capacity: parseInt(req.body.capacity),
-      pricePerMonth: parseFloat(req.body.pricePerMonth),
+      capacity: req.body.capacity ? parseInt(req.body.capacity) : undefined,
+      pricePerMonth: req.body.pricePerMonth ? parseFloat(req.body.pricePerMonth) : undefined,
       description: req.body.description,
       amenities: req.body.amenities ? JSON.parse(req.body.amenities) : undefined,
-      status: req.body.status
+      status: req.body.status,
+      roomArea: req.body.roomArea ? parseFloat(req.body.roomArea) : undefined,
+      notes: req.body.notes
     };
+    console.log('Processed data:', data);
 
     // Kiểm tra phòng có tồn tại không
     const [existingRoom] = await pool.query<RowDataPacket[]>(
       'SELECT roomImagePath FROM rooms WHERE id = ?',
       [roomId]
     );
+    console.log('Existing room query result:', existingRoom);
 
     if (!existingRoom.length) {
       return res.status(404).json({
@@ -425,9 +439,11 @@ export const updateRoom = async (req: Request, res: Response) => {
     // Xử lý cập nhật ảnh
     let imagePaths = existingRoom[0].roomImagePath ?
       JSON.parse(existingRoom[0].roomImagePath) : [];
+    console.log('Initial image paths:', imagePaths);
 
     if (req.files && Array.isArray(req.files)) {
       const files = req.files as Express.Multer.File[];
+      console.log('Uploaded files:', files.length);
 
       // Nếu không giữ lại ảnh cũ (keepExisting = false)
       if (req.body.keepExisting !== 'true') {
@@ -445,6 +461,7 @@ export const updateRoom = async (req: Request, res: Response) => {
       // Thêm đường dẫn ảnh mới
       const newPaths = files.map(file => file.path);
       imagePaths = [...imagePaths, ...newPaths];
+      console.log('Updated image paths:', imagePaths);
     }
 
     // Tạo câu query cập nhật động
@@ -463,19 +480,38 @@ export const updateRoom = async (req: Request, res: Response) => {
     updates.push('roomImagePath = ?');
     values.push(JSON.stringify(imagePaths));
 
+    console.log('SQL update parameters - fields:', updates);
+    console.log('SQL update parameters - values:', values);
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Không có dữ liệu cập nhật'
+      });
+    }
+
     // Thực hiện cập nhật
-    await pool.query(
-      `UPDATE rooms SET ${updates.join(', ')} WHERE id = ?`,
-      [...values, roomId]
-    );
+    try {
+      const updateResult = await pool.query(
+        `UPDATE rooms SET ${updates.join(', ')} WHERE id = ?`,
+        [...values, roomId]
+      );
+      console.log('Update result:', updateResult);
 
-    res.json({
-      success: true,
-      message: 'Cập nhật phòng thành công',
-      data: { imagePaths }
-    });
-
+      res.json({
+        success: true,
+        message: 'Cập nhật phòng thành công',
+        data: { imagePaths }
+      });
+    } catch (error) {
+      console.error('Database error in updateRoom:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Lỗi cơ sở dữ liệu khi cập nhật phòng'
+      });
+    }
   } catch (error) {
+    console.error('Error in updateRoom:', error);
     res.status(500).json({
       success: false,
       message: 'Lỗi khi cập nhật phòng'
@@ -572,6 +608,333 @@ export const updateRoomStatus = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: 'Lỗi khi cập nhật trạng thái phòng',
+      error: error.message
+    });
+  }
+};
+
+// Add Maintenance
+export const addMaintenance = async (req: Request, res: Response) => {
+  try {
+    const roomId = parseInt(req.params.roomId);
+
+    if (isNaN(roomId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID phòng không hợp lệ'
+      });
+    }
+
+    // Kiểm tra phòng có tồn tại không
+    const [roomExists] = await pool.query<RowDataPacket[]>(
+      'SELECT id FROM rooms WHERE id = ?',
+      [roomId]
+    );
+
+    if (!roomExists.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy phòng'
+      });
+    }
+
+    const { requestType, description, studentId } = req.body;
+
+    // Validate required fields
+    if (!requestType || !description) {
+      return res.status(400).json({
+        success: false,
+        message: 'Thiếu thông tin bắt buộc: loại yêu cầu, mô tả'
+      });
+    }
+
+    // Tạo requestNumber
+    const requestNumber = `MR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    // Insert new maintenance request - luôn đặt status = 'pending' vì là yêu cầu mới
+    const [result] = await pool.query<OkPacket>(
+      `INSERT INTO maintenance_requests (
+        roomId, requestNumber, studentId, requestType, description, priority, status, 
+        createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        roomId,
+        requestNumber,
+        studentId || null, // ID của sinh viên yêu cầu, có thể null nếu admin tạo
+        requestType,
+        description,
+        'normal', // Mức ưu tiên mặc định
+        'pending', // Luôn đặt trạng thái là pending cho yêu cầu mới
+        new Date()
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Thêm yêu cầu bảo trì thành công',
+      data: {
+        id: result.insertId,
+        requestNumber,
+        roomId,
+        studentId: studentId || null,
+        requestType,
+        description,
+        status: 'pending',
+        createdAt: new Date()
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Error adding maintenance:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi thêm yêu cầu bảo trì',
+      error: error.message
+    });
+  }
+};
+export const processMaintenanceRequest = async (req: Request, res: Response) => {
+  try {
+    const requestId = parseInt(req.params.requestId);
+    const { status, notes } = req.body;
+
+    if (isNaN(requestId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID yêu cầu không hợp lệ'
+      });
+    }
+
+    // Kiểm tra status có hợp lệ không
+    if (!['pending', 'processing', 'completed', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Trạng thái không hợp lệ'
+      });
+    }
+
+    let query = 'UPDATE maintenance_requests SET status = ?';
+    const params = [status];
+
+    if (status === 'completed') {
+      query += ', resolvedAt = NOW()';
+    }
+
+    if (notes) {
+      query += ', resolutionNote = ?';
+      params.push(notes);
+    }
+
+    query += ' WHERE id = ?';
+    params.push(requestId);
+
+    await pool.query(query, params);
+
+    res.json({
+      success: true,
+      message: 'Cập nhật trạng thái yêu cầu thành công'
+    });
+
+  } catch (error: any) {
+    console.error('Error processing maintenance request:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xử lý yêu cầu bảo trì',
+      error: error.message
+    });
+  }
+};
+
+// Add Utility
+export const addUtility = async (req: Request, res: Response) => {
+  try {
+    const roomId = parseInt(req.params.roomId);
+
+    if (isNaN(roomId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID phòng không hợp lệ'
+      });
+    }
+
+    // Kiểm tra phòng có tồn tại không và lấy thông tin phí phòng
+    const [roomData] = await pool.query<RowDataPacket[]>(
+      'SELECT id, pricePerMonth FROM rooms WHERE id = ?',
+      [roomId]
+    );
+
+    if (!roomData.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy phòng'
+      });
+    }
+
+    const roomFee = roomData[0].pricePerMonth;
+
+    const {
+      month,
+      electricity,
+      water,
+      electricityCost,
+      waterCost,
+      otherFees,
+      dueDate,
+      status,
+      paidDate
+    } = req.body;
+
+    // Validate required fields
+    if (!month || electricityCost === undefined || waterCost === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Thiếu thông tin bắt buộc: tháng, chi phí điện, chi phí nước'
+      });
+    }
+
+    // Tính tổng chi phí
+    const totalAmount =
+      parseFloat(roomFee) +
+      parseFloat(electricityCost) +
+      parseFloat(waterCost) +
+      (otherFees ? parseFloat(otherFees) : 0);
+
+    // Parse tháng thành đối tượng ngày
+    // Định dạng dự kiến: MM/YYYY
+    const [monthPart, yearPart] = month.split('/');
+    const invoiceMonth = new Date();
+    invoiceMonth.setMonth(parseInt(monthPart) - 1);
+    invoiceMonth.setFullYear(parseInt(yearPart));
+    invoiceMonth.setDate(1); // Ngày 1 của tháng
+
+    // Tạo invoiceNumber
+    const invoiceNumber = `INV-${roomId}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    // Sử dụng 'pending' thay vì 'unpaid' vì ENUM chỉ chấp nhận 'pending', 'paid', 'overdue'
+    const paymentStatus = status === 'paid' ? 'paid' : 'pending';
+
+    // Nếu không có ngày đến hạn, đặt là 15 ngày sau ngày đầu tháng
+    const defaultDueDate = new Date(invoiceMonth);
+    defaultDueDate.setDate(15);
+
+    // Insert new utility bill với roomFee
+    const [result] = await pool.query<OkPacket>(
+      `INSERT INTO invoices (
+        invoiceNumber, roomId, invoiceMonth, roomFee, electricFee, waterFee, 
+        serviceFee, totalAmount, dueDate, paymentStatus, paymentDate
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        invoiceNumber,
+        roomId,
+        invoiceMonth,
+        roomFee,
+        electricityCost,
+        waterCost,
+        otherFees || 0,
+        totalAmount,
+        dueDate ? new Date(dueDate) : defaultDueDate,
+        paymentStatus,
+        status === 'paid' && paidDate ? new Date(paidDate) : null
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Thêm hóa đơn tiện ích thành công',
+      data: {
+        id: result.insertId,
+        invoiceNumber,
+        roomId,
+        month,
+        roomFee,
+        electricityCost,
+        waterCost,
+        otherFees: otherFees || 0,
+        totalAmount,
+        paymentStatus
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Error adding utility:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi thêm hóa đơn tiện ích',
+      error: error.message
+    });
+  }
+};
+
+// Remove Resident
+export const removeResident = async (req: Request, res: Response) => {
+  try {
+    const roomId = parseInt(req.params.roomId);
+    const residentId = parseInt(req.params.residentId);
+
+    if (isNaN(roomId) || isNaN(residentId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID phòng hoặc ID sinh viên không hợp lệ'
+      });
+    }
+
+    // Kiểm tra sinh viên có ở phòng này không
+    const [contractExists] = await pool.query<RowDataPacket[]>(
+      `SELECT c.id, b.id as bedId
+       FROM contracts c 
+       JOIN beds b ON c.bedId = b.id
+       WHERE c.roomId = ? AND c.studentId = ? AND c.status = 'active'`,
+      [roomId, residentId]
+    );
+
+    if (!contractExists.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy sinh viên trong phòng này hoặc hợp đồng không còn hiệu lực'
+      });
+    }
+
+    const contractId = contractExists[0].id;
+    const bedId = contractExists[0].bedId;
+
+    // Bắt đầu transaction
+    await pool.query('START TRANSACTION');
+
+    try {
+      // Cập nhật trạng thái hợp đồng
+      await pool.query(
+        'UPDATE contracts SET status = ?, endDate = ? WHERE id = ?',
+        ['terminated', new Date(), contractId]
+      );
+
+      // Cập nhật trạng thái giường
+      await pool.query(
+        'UPDATE beds SET status = ? WHERE id = ?',
+        ['available', bedId]
+      );
+
+      // Commit transaction
+      await pool.query('COMMIT');
+
+      res.json({
+        success: true,
+        message: 'Đã xóa sinh viên khỏi phòng thành công',
+        data: {
+          roomId,
+          residentId
+        }
+      });
+    } catch (err) {
+      // Rollback transaction nếu có lỗi
+      await pool.query('ROLLBACK');
+      throw err;
+    }
+
+  } catch (error: any) {
+    console.error('Error removing resident:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xóa sinh viên khỏi phòng',
       error: error.message
     });
   }
