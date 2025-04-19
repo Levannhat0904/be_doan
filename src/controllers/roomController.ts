@@ -811,11 +811,17 @@ export const addUtility = async (req: Request, res: Response) => {
     const invoiceNumber = `INV-${roomId}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     // Sử dụng 'pending' thay vì 'unpaid' vì ENUM chỉ chấp nhận 'pending', 'paid', 'overdue'
-    const paymentStatus = status === 'paid' ? 'paid' : 'pending';
+    const paymentStatus = status || 'pending';
 
     // Nếu không có ngày đến hạn, đặt là 15 ngày sau ngày đầu tháng
     const defaultDueDate = new Date(invoiceMonth);
     defaultDueDate.setDate(15);
+
+    // Xử lý ngày thanh toán
+    let paymentDateValue = null;
+    if (paymentStatus === 'paid') {
+      paymentDateValue = paidDate ? new Date(paidDate) : new Date();
+    }
 
     // Insert new utility bill với roomFee
     const [result] = await pool.query<OkPacket>(
@@ -834,7 +840,7 @@ export const addUtility = async (req: Request, res: Response) => {
         totalAmount,
         dueDate ? new Date(dueDate) : defaultDueDate,
         paymentStatus,
-        status === 'paid' && paidDate ? new Date(paidDate) : null
+        paymentDateValue
       ]
     );
 
@@ -851,7 +857,8 @@ export const addUtility = async (req: Request, res: Response) => {
         waterCost,
         otherFees: otherFees || 0,
         totalAmount,
-        paymentStatus
+        paymentStatus,
+        paidDate: paymentDateValue
       }
     });
 
