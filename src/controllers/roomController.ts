@@ -19,10 +19,10 @@ export const getRooms = async (req: Request, res: Response) => {
       SELECT 
         r.*,
         b.name as buildingName,
-        COUNT(DISTINCT bd.id) as occupiedBeds
+        COUNT(DISTINCT c.id) as occupiedBeds
       FROM rooms r
       LEFT JOIN buildings b ON r.buildingId = b.id
-      LEFT JOIN beds bd ON r.id = bd.roomId AND bd.status = 'occupied'
+      LEFT JOIN contracts c ON r.id = c.roomId AND c.status = 'active'
     `;
 
     const whereConditions = [];
@@ -161,8 +161,9 @@ export const getRoomDetail = async (req: Request, res: Response) => {
     // Đếm số giường đã được sử dụng
     const occupiedBedsQuery = `
       SELECT COUNT(*) as occupiedBeds
-      FROM beds
-      WHERE roomId = ? AND status = 'occupied'
+      FROM contracts c
+      JOIN beds b ON c.bedId = b.id
+      WHERE c.roomId = ? AND c.status = 'active'
     `;
 
     const [occupiedBedsData] = await pool.query<RowDataPacket[]>(occupiedBedsQuery, [roomId]);

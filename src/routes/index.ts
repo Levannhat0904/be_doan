@@ -6,6 +6,7 @@ import administrativeRoutes from './administrativeRoutes';
 import roomRoutes from './roomRoutes';
 import buildingRoutes from './buildingRoutes';
 import invoiceRoutes from './invoiceRoutes';
+import dashboardRoutes from './dashboardRoutes';
 
 const router = express.Router();
 
@@ -17,5 +18,5 @@ router.use('/administrative', administrativeRoutes);
 router.use('/rooms', roomRoutes);
 router.use('/buildings', buildingRoutes);
 router.use('/', invoiceRoutes);
-
+router.use('/dashboard', dashboardRoutes);
 export default router; 
