@@ -2,6 +2,201 @@ import { Request, Response } from 'express';
 import pool from '../config/database';
 import { RowDataPacket, OkPacket } from 'mysql2';
 
+export const getAllInvoices = async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = (page - 1) * limit;
+
+    // Filtering options
+    const status = req.query.status as string | undefined;
+    const buildingId = req.query.buildingId as string | undefined;
+    const searchTerm = req.query.search as string | undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+
+    // Base query conditions
+    let conditions = [];
+    const queryParams: any[] = [];
+
+    // Adding filters if provided
+    if (status && ['pending', 'paid', 'overdue'].includes(status)) {
+      conditions.push('i.paymentStatus = ?');
+      queryParams.push(status);
+    }
+
+    if (buildingId && !isNaN(Number(buildingId))) {
+      conditions.push('r.buildingId = ?');
+      queryParams.push(Number(buildingId));
+    }
+
+    if (searchTerm) {
+      conditions.push('(i.invoiceNumber LIKE ? OR r.roomNumber LIKE ? OR s.fullName LIKE ? OR s.studentCode LIKE ?)');
+      const searchPattern = `%${searchTerm}%`;
+      queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern);
+    }
+
+    if (startDate && endDate) {
+      conditions.push('(i.dueDate BETWEEN ? AND ?)');
+      queryParams.push(startDate, endDate);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Count total invoices
+    const [countRows] = await pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) as total 
+       FROM invoices i
+       JOIN rooms r ON i.roomId = r.id
+       LEFT JOIN students s ON s.id = i.studentId
+       ${whereClause}`,
+      queryParams
+    );
+
+    const total = countRows[0].total;
+
+    // Get invoices with pagination
+    const [invoiceRows] = await pool.query<RowDataPacket[]>(
+      `SELECT 
+         i.id, i.invoiceNumber, i.invoiceMonth, i.dueDate,
+         i.roomFee, i.electricFee, i.waterFee, i.serviceFee,
+         i.totalAmount, i.paymentStatus, i.paymentDate, i.paymentMethod,
+         r.id as roomId, r.roomNumber, r.floorNumber,
+         b.id as buildingId, b.name as buildingName,
+         s.fullName, s.studentCode
+       FROM invoices i
+       JOIN rooms r ON i.roomId = r.id
+       JOIN buildings b ON r.buildingId = b.id
+       LEFT JOIN students s ON s.id = i.studentId
+       ${whereClause}
+       ORDER BY i.invoiceMonth DESC
+       LIMIT ? OFFSET ?`,
+      [...queryParams, limit, offset]
+    );
+
+    // Format invoices for response
+    const invoices = invoiceRows.map(invoice => ({
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      roomId: invoice.roomId,
+      roomNumber: invoice.roomNumber,
+      floorNumber: invoice.floorNumber,
+      buildingId: invoice.buildingId,
+      buildingName: invoice.buildingName,
+      fullName: invoice.fullName,
+      studentCode: invoice.studentCode,
+      invoiceMonth: invoice.invoiceMonth,
+      electricity: Math.round(invoice.electricFee / 2000), // kWh
+      water: Math.round(invoice.waterFee / 10000), // m3
+      electricFee: invoice.electricFee,
+      waterFee: invoice.waterFee,
+      serviceFee: invoice.serviceFee,
+      roomFee: invoice.roomFee,
+      totalAmount: invoice.totalAmount,
+      dueDate: invoice.dueDate,
+      paymentStatus: invoice.paymentStatus,
+      paymentDate: invoice.paymentDate,
+      paymentMethod: invoice.paymentMethod
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        invoices,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching all invoices:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi truy vấn danh sách hóa đơn',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+export const getInvoiceById = async (req: Request, res: Response) => {
+  try {
+    const { invoiceId } = req.params;
+
+    // Validate invoiceId
+    if (!invoiceId || isNaN(Number(invoiceId))) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID hóa đơn không hợp lệ'
+      });
+    }
+
+    // Get invoice details
+    const [invoiceRows] = await pool.query<RowDataPacket[]>(
+      `SELECT 
+         i.id, i.invoiceNumber, i.invoiceMonth, i.dueDate,
+         i.roomFee, i.electricFee, i.waterFee, i.serviceFee,
+         i.totalAmount, i.paymentStatus, i.paymentDate, i.paymentMethod,
+         r.id as roomId, r.roomNumber, r.floorNumber,
+         b.id as buildingId, b.name as buildingName,
+         s.fullName, s.studentCode, s.phone as phoneNumber, s.email
+       FROM invoices i
+       JOIN rooms r ON i.roomId = r.id
+       JOIN buildings b ON r.buildingId = b.id
+       LEFT JOIN students s ON s.id = i.studentId
+       WHERE i.id = ?`,
+      [invoiceId]
+    );
+
+    if (invoiceRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy hóa đơn'
+      });
+    }
+
+    const invoice = invoiceRows[0];
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        roomId: invoice.roomId,
+        roomNumber: invoice.roomNumber,
+        floorNumber: invoice.floorNumber,
+        buildingId: invoice.buildingId,
+        buildingName: invoice.buildingName,
+        fullName: invoice.fullName,
+        studentCode: invoice.studentCode,
+        phoneNumber: invoice.phoneNumber,
+        email: invoice.email,
+        invoiceMonth: invoice.invoiceMonth,
+        electricity: Math.round(invoice.electricFee / 2000), // kWh
+        water: Math.round(invoice.waterFee / 10000), // m3
+        electricFee: invoice.electricFee,
+        waterFee: invoice.waterFee,
+        serviceFee: invoice.serviceFee,
+        roomFee: invoice.roomFee,
+        totalAmount: invoice.totalAmount,
+        dueDate: invoice.dueDate,
+        paymentStatus: invoice.paymentStatus,
+        paymentDate: invoice.paymentDate,
+        paymentMethod: invoice.paymentMethod
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching invoice details:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi truy vấn chi tiết hóa đơn',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
 export const getInvoicesByRoom = async (req: Request, res: Response) => {
   try {
     const { roomId } = req.params;
@@ -139,9 +334,26 @@ export const createInvoice = async (req: Request, res: Response) => {
     // Calculate fees
     const electricFee = Number(electricity) * 2000; // 2000 VND per kWh
     const waterFee = Number(water) * 10000; // 10000 VND per m3
+
+    // Kiểm tra giới hạn của cột DECIMAL(10,2)
+    if (waterFee > 99999999.99) {
+      return res.status(400).json({
+        success: false,
+        message: 'Giá trị tiền nước vượt quá giới hạn. Vui lòng kiểm tra lại số nước.'
+      });
+    }
+
     const serviceFeeFinal = Number(serviceFee) || 100000; // Default to 100,000 VND if not provided
-    const roomFee = room.pricePerMonth;
-    const totalAmount = electricFee + waterFee + serviceFeeFinal + roomFee;
+    const roomFee = Number(room.pricePerMonth);
+    const totalAmount = Number(electricFee) + Number(waterFee) + Number(serviceFeeFinal) + Number(roomFee);
+
+    // Kiểm tra giới hạn của cột DECIMAL(10,2)
+    if (totalAmount > 99999999.99) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tổng số tiền vượt quá giới hạn. Vui lòng kiểm tra lại các giá trị.'
+      });
+    }
 
     // Format invoice month
     const invoiceDate = new Date(invoiceMonth);
@@ -265,6 +477,95 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
   }
 };
 
+export const updateInvoice = async (req: Request, res: Response) => {
+  try {
+    const { invoiceId } = req.params;
+    const {
+      invoiceMonth,
+      dueDate,
+      roomFee,
+      electricFee,
+      waterFee,
+      serviceFee,
+      electricity,
+      water
+    } = req.body;
+
+    // Validate input
+    if (!invoiceMonth || !dueDate || roomFee === undefined ||
+      electricFee === undefined || waterFee === undefined ||
+      serviceFee === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Thiếu thông tin cần thiết cho hóa đơn'
+      });
+    }
+
+    // Calculate total amount
+    const totalAmount = Number(roomFee) + Number(electricFee) + Number(waterFee) + Number(serviceFee);
+
+    // Check if values exceed database column limits
+    if (waterFee > 99999999.99) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tiền nước vượt quá giới hạn cho phép'
+      });
+    }
+
+    if (totalAmount > 99999999.99) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tổng tiền hóa đơn vượt quá giới hạn cho phép'
+      });
+    }
+
+    // Update invoice
+    const [result] = await pool.query<OkPacket>(
+      `UPDATE invoices 
+       SET invoiceMonth = ?, dueDate = ?, roomFee = ?, 
+           electricFee = ?, waterFee = ?, serviceFee = ?, 
+           totalAmount = ?
+       WHERE id = ?`,
+      [
+        invoiceMonth,
+        dueDate,
+        roomFee,
+        electricFee,
+        waterFee,
+        serviceFee,
+        totalAmount,
+        invoiceId
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy hóa đơn'
+      });
+    }
+
+    // Get updated invoice data
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT * FROM invoices WHERE id = ?`,
+      [invoiceId]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cập nhật hóa đơn thành công',
+      data: rows[0]
+    });
+  } catch (error) {
+    console.error('Error updating invoice:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi cập nhật hóa đơn',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
 export const deleteInvoice = async (req: Request, res: Response) => {
   try {
     const { invoiceId } = req.params;
@@ -291,6 +592,288 @@ export const deleteInvoice = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: 'Lỗi khi xóa hóa đơn',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+
+// Public lookup API for students to find their invoices
+export const searchInvoices = async (req: Request, res: Response) => {
+  try {
+    const { studentCode, roomNumber, month } = req.query;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = (page - 1) * limit;
+
+    // Check if at least one parameter is provided
+    if (!studentCode && !roomNumber && !month) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp ít nhất một điều kiện tìm kiếm (mã sinh viên, số phòng hoặc tháng)'
+      });
+    }
+
+    // Build simple query - always use LEFT JOIN to avoid dependency on student records
+    // and to handle cases where invoices don't have associated students
+    let conditions = [];
+    const queryParams: any[] = [];
+
+    if (roomNumber) {
+      conditions.push('r.roomNumber LIKE ?');
+      queryParams.push(`%${roomNumber}%`);
+    }
+
+    if (month) {
+      // Parse month format MM/YYYY or YYYY-MM
+      let parsedMonth;
+      if (typeof month === 'string') {
+        if (month.includes('/')) {
+          const [m, y] = month.split('/');
+          parsedMonth = `${y}-${m}`;
+        } else {
+          parsedMonth = month;
+        }
+        conditions.push('DATE_FORMAT(i.invoiceMonth, "%Y-%m") = ?');
+        queryParams.push(parsedMonth);
+      }
+    }
+
+    if (studentCode) {
+      conditions.push('(s.studentCode LIKE ? OR s.studentCode IS NULL)');
+      queryParams.push(`%${studentCode}%`);
+    }
+
+    // Build the WHERE clause
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Count total invoices
+    const [countRows] = await pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) as total 
+       FROM invoices i
+       JOIN rooms r ON i.roomId = r.id
+       JOIN buildings b ON r.buildingId = b.id
+       LEFT JOIN students s ON s.id = i.studentId
+       ${whereClause}`,
+      queryParams
+    );
+
+    const total = countRows[0].total;
+
+    if (total === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'Không tìm thấy hóa đơn phù hợp với điều kiện tìm kiếm',
+        data: {
+          invoices: [],
+          pagination: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0
+          }
+        }
+      });
+    }
+
+    // Get invoices with pagination
+    const [invoiceRows] = await pool.query<RowDataPacket[]>(
+      `SELECT 
+         i.id, i.invoiceNumber, i.invoiceMonth, i.dueDate,
+         i.roomFee, i.electricFee, i.waterFee, i.serviceFee,
+         i.totalAmount, i.paymentStatus, i.paymentDate, i.paymentMethod,
+         r.id as roomId, r.roomNumber, r.floorNumber,
+         b.id as buildingId, b.name as buildingName,
+         s.fullName, s.studentCode
+       FROM invoices i
+       JOIN rooms r ON i.roomId = r.id
+       JOIN buildings b ON r.buildingId = b.id
+       LEFT JOIN students s ON s.id = i.studentId
+       ${whereClause}
+       ORDER BY i.invoiceMonth DESC
+       LIMIT ? OFFSET ?`,
+      [...queryParams, limit, offset]
+    );
+
+    // Process each invoice to get room students if needed
+    const processedInvoices = await Promise.all(invoiceRows.map(async (invoice) => {
+      // If we already have a student associated with the invoice, just return the regular data
+      if (invoice.fullName && invoice.studentCode) {
+        return {
+          id: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          roomId: invoice.roomId,
+          roomNumber: invoice.roomNumber,
+          floorNumber: invoice.floorNumber,
+          buildingId: invoice.buildingId,
+          buildingName: invoice.buildingName,
+          fullName: invoice.fullName,
+          studentCode: invoice.studentCode,
+          invoiceMonth: invoice.invoiceMonth,
+          electricity: Math.round(invoice.electricFee / 2000), // kWh
+          water: Math.round(invoice.waterFee / 10000), // m3
+          electricFee: invoice.electricFee,
+          waterFee: invoice.waterFee,
+          serviceFee: invoice.serviceFee,
+          roomFee: invoice.roomFee,
+          totalAmount: invoice.totalAmount,
+          dueDate: invoice.dueDate,
+          paymentStatus: invoice.paymentStatus,
+          paymentDate: invoice.paymentDate,
+          paymentMethod: invoice.paymentMethod
+        };
+      }
+
+      // Get students in this room via active contracts
+      const [roomStudents] = await pool.query<RowDataPacket[]>(
+        `SELECT 
+           s.fullName, s.studentCode, s.id as studentId
+         FROM contracts c
+         JOIN students s ON c.studentId = s.id
+         WHERE c.roomId = ? 
+         AND c.status = 'active'
+         AND (? BETWEEN c.startDate AND c.endDate OR c.startDate <= LAST_DAY(?))`,
+        [invoice.roomId, invoice.invoiceMonth, invoice.invoiceMonth]
+      );
+
+      // If we found students in the room
+      if (roomStudents.length > 0) {
+        const studentInfo = roomStudents.map(s =>
+          `${s.fullName} (${s.studentCode})`
+        ).join(', ');
+
+        return {
+          id: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          roomId: invoice.roomId,
+          roomNumber: invoice.roomNumber,
+          floorNumber: invoice.floorNumber,
+          buildingId: invoice.buildingId,
+          buildingName: invoice.buildingName,
+          fullName: studentInfo,
+          studentCode: null, // We're using fullName to store all student details
+          roomStudents: roomStudents,
+          invoiceMonth: invoice.invoiceMonth,
+          electricity: Math.round(invoice.electricFee / 2000), // kWh
+          water: Math.round(invoice.waterFee / 10000), // m3
+          electricFee: invoice.electricFee,
+          waterFee: invoice.waterFee,
+          serviceFee: invoice.serviceFee,
+          roomFee: invoice.roomFee,
+          totalAmount: invoice.totalAmount,
+          dueDate: invoice.dueDate,
+          paymentStatus: invoice.paymentStatus,
+          paymentDate: invoice.paymentDate,
+          paymentMethod: invoice.paymentMethod
+        };
+      }
+
+      // If no students found, return original data
+      return {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        roomId: invoice.roomId,
+        roomNumber: invoice.roomNumber,
+        floorNumber: invoice.floorNumber,
+        buildingId: invoice.buildingId,
+        buildingName: invoice.buildingName,
+        fullName: null,
+        studentCode: null,
+        invoiceMonth: invoice.invoiceMonth,
+        electricity: Math.round(invoice.electricFee / 2000), // kWh
+        water: Math.round(invoice.waterFee / 10000), // m3
+        electricFee: invoice.electricFee,
+        waterFee: invoice.waterFee,
+        serviceFee: invoice.serviceFee,
+        roomFee: invoice.roomFee,
+        totalAmount: invoice.totalAmount,
+        dueDate: invoice.dueDate,
+        paymentStatus: invoice.paymentStatus,
+        paymentDate: invoice.paymentDate,
+        paymentMethod: invoice.paymentMethod
+      };
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        invoices: processedInvoices,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error searching invoices:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi tìm kiếm hóa đơn',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// Get all student codes for select component
+export const getStudentCodes = async (req: Request, res: Response) => {
+  try {
+    const searchTerm = req.query.search as string || '';
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT id, studentCode, fullName 
+       FROM students 
+       WHERE studentCode LIKE ? OR fullName LIKE ?
+       ORDER BY studentCode 
+       LIMIT 50`,
+      [`%${searchTerm}%`, `%${searchTerm}%`]
+    );
+
+    return res.json({
+      success: true,
+      data: rows.map(row => ({
+        value: row.studentCode,
+        label: `${row.studentCode} - ${row.fullName}`,
+        id: row.id
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching student codes:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi truy vấn danh sách mã sinh viên',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// Get all room numbers for select component
+export const getRoomNumbers = async (req: Request, res: Response) => {
+  try {
+    const searchTerm = req.query.search as string || '';
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT r.id, r.roomNumber, b.name as buildingName 
+       FROM rooms r
+       JOIN buildings b ON r.buildingId = b.id
+       WHERE r.roomNumber LIKE ? OR b.name LIKE ?
+       ORDER BY b.name, r.roomNumber 
+       LIMIT 50`,
+      [`%${searchTerm}%`, `%${searchTerm}%`]
+    );
+
+    return res.json({
+      success: true,
+      data: rows.map(row => ({
+        value: row.roomNumber,
+        label: `${row.roomNumber} - Tòa ${row.buildingName}`,
+        id: row.id
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching room numbers:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi truy vấn danh sách phòng',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }

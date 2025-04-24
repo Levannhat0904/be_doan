@@ -7,6 +7,25 @@ import { isAdmin } from '../middlewares/roleMiddleware';
 
 const router = express.Router();
 
+// Get all invoices with pagination and filtering
+router.get(
+  '/invoices',
+  authMiddleware,
+  isAdmin,
+  (req, res, next) => {
+    InvoiceController.getAllInvoices(req, res).catch(next);
+  }
+);
+
+// Get invoice by ID
+router.get(
+  '/invoices/:invoiceId',
+  authMiddleware,
+  (req, res, next) => {
+    InvoiceController.getInvoiceById(req, res).catch(next);
+  }
+);
+
 // Get invoices by room
 router.get(
   '/rooms/:roomId/invoices',
@@ -43,6 +62,39 @@ router.delete(
   isAdmin,
   (req, res, next) => {
     InvoiceController.deleteInvoice(req, res).catch(next);
+  }
+);
+
+// Update invoice
+router.patch(
+  '/invoices/:invoiceId',
+  authMiddleware,
+  isAdmin,
+  (req, res, next) => {
+    InvoiceController.updateInvoice(req, res).catch(next);
+  }
+);
+
+// Public API for invoice lookup (does not require authentication)
+router.get(
+  '/public/invoices/search',
+  (req, res, next) => {
+    InvoiceController.searchInvoices(req, res).catch(next);
+  }
+);
+
+// Public API endpoints for select components
+router.get(
+  '/public/students/codes',
+  (req, res, next) => {
+    InvoiceController.getStudentCodes(req, res).catch(next);
+  }
+);
+
+router.get(
+  '/public/rooms/numbers',
+  (req, res, next) => {
+    InvoiceController.getRoomNumbers(req, res).catch(next);
   }
 );
 
