@@ -108,17 +108,6 @@ CREATE TABLE IF NOT EXISTS room_images (
     createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    CREATE TABLE IF NOT EXISTS beds (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        roomId INT,
-        bedNumber VARCHAR(10) NOT NULL,
-        description TEXT,
-        bedImagePath TEXT,
-        status ENUM('available', 'occupied', 'maintenance') DEFAULT 'available',
-        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_bed (roomId, bedNumber),
-        FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     -- 5. CONTRACTS & BILLING
     CREATE TABLE IF NOT EXISTS contracts (
@@ -126,7 +115,6 @@ CREATE TABLE IF NOT EXISTS room_images (
         contractNumber VARCHAR(50) UNIQUE NOT NULL,
         studentId INT,
         roomId INT,
-        bedId INT,
         startDate DATE NOT NULL,
         endDate DATE NOT NULL,
         depositAmount DECIMAL(10,2) NOT NULL,
@@ -137,7 +125,6 @@ CREATE TABLE IF NOT EXISTS room_images (
         updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (studentId) REFERENCES students(id) ON DELETE CASCADE,
         FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE CASCADE,
-        FOREIGN KEY (bedId) REFERENCES beds(id) ON DELETE CASCADE,
         FOREIGN KEY (createdBy) REFERENCES admins(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

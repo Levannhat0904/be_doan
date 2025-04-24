@@ -11,7 +11,7 @@ import { errorHandler } from './middleware/errorHandler';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || 3000;
 
 // Security middleware
 app.use(helmet({
@@ -19,9 +19,10 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false, // Disable for development
 }));
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  origin: ['http://localhost:3001', 'http://localhost:3000', process.env.CORS_ORIGIN || '*'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 // Body parsers
@@ -30,6 +31,12 @@ app.use(express.urlencoded({ extended: true }));
 
 // Serve static files - for uploaded images
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Log routes for debugging
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.url}`);
+  next();
+});
 
 // Routes
 app.use('/api', routes);
@@ -56,6 +63,7 @@ app.use(errorHandler);
 // Start server
 app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
+  logger.info(`API available at http://localhost:${PORT}/api`);
 });
 
 export default app;

@@ -1,5 +1,5 @@
 // be/src/controllers/buildingController.ts
-import { Request, Response } from 'express';
+import { Request, Response, RequestHandler } from 'express';
 import pool from '../config/database';
 import { RowDataPacket, OkPacket } from 'mysql2';
 
@@ -156,5 +156,91 @@ export const deleteBuilding = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error deleting building:', error);
     res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Get buildings with available rooms
+export const getAvailableBuildings = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const query = `
+      SELECT 
+        b.id,
+        b.name as label,
+        b.id as value,
+        COUNT(DISTINCT r.id) as totalRooms,
+        COUNT(DISTINCT CASE WHEN r.status = 'available' THEN r.id END) as availableRooms
+      FROM buildings b
+      LEFT JOIN rooms r ON b.id = r.buildingId AND r.status != 'maintenance'
+      WHERE b.status = 'active'
+      GROUP BY b.id
+      HAVING availableRooms > 0
+    `;
+
+    const [buildings] = await pool.query<RowDataPacket[]>(query);
+
+    res.json({
+      success: true,
+      data: buildings,
+      message: 'Available buildings retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error getting available buildings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
+// Get available rooms in a building
+export const getAvailableRooms = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { buildingId } = req.params;
+    const { gender } = req.query;
+
+    if (!buildingId) {
+      res.status(400).json({
+        success: false,
+        message: 'Building ID is required'
+      });
+      return;
+    }
+
+    let genderFilter = '';
+    if (gender === 'male' || gender === 'female') {
+      genderFilter = `AND r.roomType = '${gender}'`;
+    }
+
+    const query = `
+      SELECT 
+        r.id as value,
+        r.roomNumber as label,
+        r.floorNumber,
+        r.roomType,
+        r.capacity,
+        r.currentOccupancy,
+        r.pricePerMonth,
+        (r.capacity - r.currentOccupancy) as availableBeds
+      FROM rooms r
+      WHERE r.buildingId = ? 
+        AND r.status = 'available'
+        ${genderFilter}
+      HAVING availableBeds > 0
+      ORDER BY r.floorNumber, r.roomNumber
+    `;
+
+    const [rooms] = await pool.query<RowDataPacket[]>(query, [buildingId]);
+
+    res.json({
+      success: true,
+      data: rooms,
+      message: 'Available rooms retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error getting available rooms:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
   }
 };

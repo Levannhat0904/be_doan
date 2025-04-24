@@ -150,16 +150,52 @@ export class StudentService {
 
       const student = students[0];
 
-      // Cập nhật status của user thành inactive
+      // 1. Cập nhật status của user thành inactive
       await connection.query(
         'UPDATE users SET status = ? WHERE id = ?',
         [STATUS.INACTIVE, student.userId]
       );
 
-      // Cập nhật status của student thành inactive
+      // 2. Cập nhật status của student thành inactive
       await connection.query(
         'UPDATE students SET status = ? WHERE id = ?',
         ['inactive', studentId]
+      );
+
+      // 3. Cập nhật trạng thái tất cả các hợp đồng liên quan thành terminated
+      await connection.query(
+        'UPDATE contracts SET status = ? WHERE studentId = ? AND status = ?',
+        ['terminated', studentId, 'active']
+      );
+
+      // 4. Lấy phòng mà sinh viên đã được gán (để cập nhật currentOccupancy)
+      const [roomResults] = await connection.query<RowDataPacket[]>(
+        `SELECT r.id, r.currentOccupancy 
+         FROM contracts c
+         JOIN rooms r ON c.roomId = r.id
+         WHERE c.studentId = ? AND c.status = 'terminated'`,
+        [studentId]
+      );
+
+      // 5. Cập nhật currentOccupancy của từng phòng
+      for (const room of roomResults) {
+        await connection.query(
+          'UPDATE rooms SET currentOccupancy = GREATEST(0, currentOccupancy - 1) WHERE id = ?',
+          [room.id]
+        );
+      }
+
+      // 6. Ghi log hoạt động
+      await connection.query(
+        `INSERT INTO activity_logs (userId, action, entityType, entityId, description)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          student.userId,
+          'reject',
+          'student',
+          studentId,
+          'Từ chối sinh viên và chấm dứt các hợp đồng liên quan'
+        ]
       );
 
       await connection.commit();

@@ -4,7 +4,6 @@ export const DATABASE_TABLES = {
   STUDENTS: 'students',
   BUILDINGS: 'buildings',
   ROOMS: 'rooms',
-  BEDS: 'beds',
   CONTRACTS: 'contracts',
   INVOICES: 'invoices',
   MAINTENANCE_REQUESTS: 'maintenance_requests',

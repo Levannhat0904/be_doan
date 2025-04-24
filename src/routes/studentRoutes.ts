@@ -79,6 +79,8 @@ router.patch('/:id/activate', authMiddleware, isAdmin, studentController.activat
 router.patch('/:id/reject', authMiddleware, isAdmin, studentController.rejectStudent);
 router.get('/', authMiddleware, isAdmin, studentController.getAllStudents);
 router.get('/:id', authMiddleware, isAdmin, studentController.getStudentById);
+router.get('/:id/detail', authMiddleware, isAdmin, studentController.getStudentDetailById);
 router.put('/:id/status', authMiddleware, isAdmin, studentController.updateStudentStatus);
+router.put('/:id/dormitory', authMiddleware, isAdmin, studentController.updateStudentDormitory);
 
 export default router; 

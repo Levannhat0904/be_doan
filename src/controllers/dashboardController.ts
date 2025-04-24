@@ -14,21 +14,14 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
       FROM students`
     );
 
-    // Get rooms and occupancy stats - sử dụng cùng query và cách tính như trong roomController
+    // Get rooms and occupancy stats - using contracts to count occupancy
     const [roomsResult] = await pool.query<RowDataPacket[]>(
       `SELECT 
         COUNT(*) as totalRooms,
-        COUNT(CASE WHEN status = 'available' AND occupiedBeds < capacity THEN 1 END) as availableRooms,
+        COUNT(CASE WHEN status = 'available' AND currentOccupancy < capacity THEN 1 END) as availableRooms,
         COUNT(CASE WHEN status = 'maintenance' THEN 1 END) as maintenanceRooms,
-        ROUND(AVG(CAST(occupiedBeds AS FLOAT) / capacity * 100)) as occupancyRate
-      FROM (
-        SELECT 
-          r.*,
-          COUNT(DISTINCT bd.id) as occupiedBeds
-        FROM rooms r
-        LEFT JOIN beds bd ON r.id = bd.roomId AND bd.status = 'occupied'
-        GROUP BY r.id
-      ) as rooms_with_counts`
+        ROUND(AVG(CAST(currentOccupancy AS FLOAT) / capacity * 100)) as occupancyRate
+      FROM rooms`
     );
 
     // Get pending maintenance requests
@@ -207,25 +200,26 @@ export const getYearlyStats = async (req: Request, res: Response) => {
 // Get occupancy data for the pie charts
 export const getOccupancyStats = async (req: Request, res: Response) => {
   try {
-    // Get monthly occupancy stats
-    const [monthlyResult] = await pool.query<RowDataPacket[]>(
+    // Get monthly occupancy stats based on room occupancy
+    const [roomOccupancy] = await pool.query<RowDataPacket[]>(
       `SELECT 
-         COUNT(CASE WHEN b.status = 'occupied' THEN 1 END) as occupied,
-         COUNT(CASE WHEN b.status = 'available' THEN 1 END) as available
-       FROM beds b`
+         SUM(currentOccupancy) as occupied,
+         SUM(capacity - currentOccupancy) as available
+       FROM rooms
+       WHERE status != 'maintenance'`
     );
 
     // Calculate percentages for the pie charts
-    const monthlyTotal = monthlyResult[0].occupied + monthlyResult[0].available;
+    const totalCapacity = roomOccupancy[0].occupied + roomOccupancy[0].available;
 
     const monthlyOccupancyData = [
       {
         name: "Đã sử dụng",
-        value: monthlyTotal > 0 ? Math.round(monthlyResult[0].occupied / monthlyTotal * 100) : 0
+        value: totalCapacity > 0 ? Math.round(roomOccupancy[0].occupied / totalCapacity * 100) : 0
       },
       {
         name: "Còn trống",
-        value: monthlyTotal > 0 ? Math.round(monthlyResult[0].available / monthlyTotal * 100) : 0
+        value: totalCapacity > 0 ? Math.round(roomOccupancy[0].available / totalCapacity * 100) : 0
       }
     ];
 

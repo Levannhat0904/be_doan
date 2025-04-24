@@ -158,11 +158,10 @@ export const getRoomDetail = async (req: Request, res: Response) => {
       notes: '' // Optional
     };
 
-    // Đếm số giường đã được sử dụng
+    // Đếm số chỗ đã được sử dụng (dựa trên số hợp đồng active)
     const occupiedBedsQuery = `
       SELECT COUNT(*) as occupiedBeds
       FROM contracts c
-      JOIN beds b ON c.bedId = b.id
       WHERE c.roomId = ? AND c.status = 'active'
     `;
 
@@ -172,7 +171,7 @@ export const getRoomDetail = async (req: Request, res: Response) => {
     // Get residents in the room
     const residentsQuery = `
       SELECT s.id, s.studentCode, s.fullName, s.gender, s.phone, s.email, 
-             c.startDate as joinDate, c.endDate, b.bedNumber, c.status,
+             c.startDate as joinDate, c.endDate, c.status,
              s.faculty, s.major, s.avatarPath,
              IFNULL(
                (SELECT MAX(i.paymentStatus) 
@@ -181,7 +180,6 @@ export const getRoomDetail = async (req: Request, res: Response) => {
              ) as paymentStatus
       FROM contracts c
       JOIN students s ON c.studentId = s.id
-      JOIN beds b ON c.bedId = b.id
       WHERE c.roomId = ? AND c.status = 'active'
     `;
 
@@ -196,7 +194,6 @@ export const getRoomDetail = async (req: Request, res: Response) => {
       email: resident.email,
       joinDate: resident.joinDate,
       endDate: resident.endDate,
-      bedNumber: resident.bedNumber,
       status: resident.status,
       faculty: resident.faculty,
       major: resident.major,
@@ -888,9 +885,8 @@ export const removeResident = async (req: Request, res: Response) => {
 
     // Kiểm tra sinh viên có ở phòng này không
     const [contractExists] = await pool.query<RowDataPacket[]>(
-      `SELECT c.id, b.id as bedId
+      `SELECT c.id 
        FROM contracts c 
-       JOIN beds b ON c.bedId = b.id
        WHERE c.roomId = ? AND c.studentId = ? AND c.status = 'active'`,
       [roomId, residentId]
     );
@@ -903,7 +899,6 @@ export const removeResident = async (req: Request, res: Response) => {
     }
 
     const contractId = contractExists[0].id;
-    const bedId = contractExists[0].bedId;
 
     // Bắt đầu transaction
     await pool.query('START TRANSACTION');
@@ -915,10 +910,16 @@ export const removeResident = async (req: Request, res: Response) => {
         ['terminated', new Date(), contractId]
       );
 
-      // Cập nhật trạng thái giường
+      // Cập nhật số người ở phòng
       await pool.query(
-        'UPDATE beds SET status = ? WHERE id = ?',
-        ['available', bedId]
+        'UPDATE rooms SET currentOccupancy = currentOccupancy - 1 WHERE id = ?',
+        [roomId]
+      );
+
+      // Cập nhật trạng thái phòng nếu đang full
+      await pool.query(
+        'UPDATE rooms SET status = "available" WHERE id = ? AND status = "full"',
+        [roomId]
       );
 
       // Commit transaction
@@ -937,7 +938,6 @@ export const removeResident = async (req: Request, res: Response) => {
       await pool.query('ROLLBACK');
       throw err;
     }
-
   } catch (error: any) {
     console.error('Error removing resident:', error);
     res.status(500).json({

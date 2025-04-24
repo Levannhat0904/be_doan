@@ -78,28 +78,28 @@ async function seedRooms() {
           const status = roomStatuses[Math.floor(Math.random() * roomStatuses.length)];
           const amenities = JSON.stringify(amenitiesOptions[Math.floor(Math.random() * amenitiesOptions.length)]);
 
+          // Random occupancy for sample data (30% chance that each capacity slot is filled)
+          let currentOccupancy = 0;
+          if (status === 'available') {
+            for (let i = 0; i < capacity; i++) {
+              if (Math.random() < 0.3) currentOccupancy++;
+            }
+          }
+
+          // If occupancy equals capacity, update status to full
+          const finalStatus = status === 'available' && currentOccupancy >= capacity ? 'full' : status;
+
           // Insert room
           const [result] = await pool.query<ResultSetHeader>(
             `INSERT INTO rooms 
-            (buildingId, roomNumber, floorNumber, roomType, capacity, pricePerMonth, amenities, status) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (buildingId, roomNumber, floorNumber, roomType, capacity, currentOccupancy, pricePerMonth, amenities, status) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE roomNumber=roomNumber`,
-            [building.id, roomNumber, floor, roomType, capacity, pricePerMonth, amenities, status]
+            [building.id, roomNumber, floor, roomType, capacity, currentOccupancy, pricePerMonth, amenities, finalStatus]
           );
 
           if (result.insertId) {
             roomCount++;
-
-            // Create beds for the room
-            for (let bedNum = 1; bedNum <= capacity; bedNum++) {
-              // 30% chance the bed is occupied for available rooms
-              const bedStatus = (status === 'available' && Math.random() < 0.3) ? 'occupied' : 'available';
-
-              await pool.query(
-                'INSERT INTO beds (roomId, bedNumber, status) VALUES (?, ?, ?)',
-                [result.insertId, `${bedNum}`, bedStatus]
-              );
-            }
           }
         }
       }
