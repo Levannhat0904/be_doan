@@ -3,6 +3,7 @@ import pool from '../config/database';
 import { RowDataPacket, OkPacket } from 'mysql2';
 import fs from 'fs';
 import { Room, RoomFilters, RoomResponse } from '../types/room/room';
+import activityLogService from '../services/activityLogService';
 // Add this type at the top
 type QueryResult = RowDataPacket[];
 
@@ -307,85 +308,95 @@ export const getRoomDetail = async (req: Request, res: Response) => {
 // Add Room
 export const addRoom = async (req: Request, res: Response) => {
   try {
-    const data = {
-      buildingId: parseInt(req.body.buildingId),
-      roomNumber: req.body.roomNumber,
-      floorNumber: parseInt(req.body.floorNumber),
-      roomType: req.body.roomType,
-      capacity: parseInt(req.body.capacity),
-      pricePerMonth: parseFloat(req.body.pricePerMonth),
-      description: req.body.description,
-      amenities: req.body.amenities ? JSON.parse(req.body.amenities) : [],
-      status: req.body.status || 'available'
-    };
+    const {
+      buildingId,
+      roomNumber,
+      floorNumber,
+      roomType,
+      capacity,
+      pricePerMonth,
+      description,
+      roomArea,
+      notes,
+      amenities
+    } = req.body;
 
     // Validate required fields
-    const requiredFields = [
-      'buildingId', 'roomNumber', 'floorNumber',
-      'roomType', 'capacity', 'pricePerMonth'
-    ] as const;
-
-    const missingFields = requiredFields.filter(field => !data[field as keyof typeof data]);
-    if (missingFields.length > 0) {
+    if (!buildingId || !roomNumber || !floorNumber || !roomType || !capacity || !pricePerMonth) {
       return res.status(400).json({
         success: false,
-        message: `Thiếu các trường bắt buộc: ${missingFields.join(', ')}`
+        message: 'Missing required fields'
       });
     }
 
-    // Thêm phòng mới vào database
+    // Check if building exists
+    const [buildingResult] = await pool.query<RowDataPacket[]>(
+      'SELECT id, name FROM buildings WHERE id = ?',
+      [buildingId]
+    );
+
+    if (buildingResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Building not found'
+      });
+    }
+
+    // Check if room already exists in this building
+    const [roomExistsResult] = await pool.query<RowDataPacket[]>(
+      'SELECT id FROM rooms WHERE buildingId = ? AND roomNumber = ?',
+      [buildingId, roomNumber]
+    );
+
+    if (roomExistsResult.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Room number already exists in this building'
+      });
+    }
+
+    // Insert room
     const [result] = await pool.query<OkPacket>(
-      `INSERT INTO rooms (
-        buildingId, roomNumber, floorNumber, roomType, 
-        capacity, pricePerMonth, description, amenities, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO rooms 
+      (buildingId, roomNumber, floorNumber, roomType, capacity, pricePerMonth, description, roomArea, notes, amenities, status) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        data.buildingId, data.roomNumber, data.floorNumber,
-        data.roomType, data.capacity, data.pricePerMonth,
-        data.description, JSON.stringify(data.amenities), data.status
+        buildingId,
+        roomNumber,
+        floorNumber,
+        roomType,
+        capacity,
+        pricePerMonth,
+        description || null,
+        roomArea || null,
+        notes || null,
+        amenities ? JSON.stringify(amenities) : null,
+        'available'
       ]
     );
 
-    const roomId = result.insertId;
-    let imagePaths: string[] = [];
-
-    // Chỉ xử lý ảnh sau khi thêm phòng thành công
-    if (req.files && Array.isArray(req.files)) {
-      const files = req.files as Express.Multer.File[];
-      imagePaths = files.map(file => file.path);
-
-      // Cập nhật đường dẫn ảnh vào phòng
-      await pool.query(
-        'UPDATE rooms SET roomImagePath = ? WHERE id = ?',
-        [JSON.stringify(imagePaths), roomId]
+    // Log activity
+    if (req.user?.id) {
+      await activityLogService.logActivity(
+        req.user.id,
+        'create',
+        'room',
+        result.insertId,
+        `Tạo phòng mới: ${roomNumber} tại tòa nhà ${buildingResult[0].name}`,
+        req
       );
     }
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
-      message: 'Thêm phòng thành công',
-      data: {
-        roomId: result.insertId,
-        imagePaths
-      }
+      message: 'Room created successfully',
+      data: { id: result.insertId }
     });
-
   } catch (error) {
-    // Nếu có lỗi, xóa các file ảnh đã upload
-    if (req.files && Array.isArray(req.files)) {
-      const files = req.files as Express.Multer.File[];
-      for (const file of files) {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (err) {
-          console.error(`Lỗi xóa file ảnh: ${file.path}`);
-        }
-      }
-    }
-
-    res.status(500).json({
+    console.error('Error adding room:', error);
+    return res.status(500).json({
       success: false,
-      message: 'Lỗi khi thêm phòng'
+      message: 'Internal server error'
     });
   }
 };
@@ -393,126 +404,167 @@ export const addRoom = async (req: Request, res: Response) => {
 // Update Room
 export const updateRoom = async (req: Request, res: Response) => {
   try {
-    console.log('Starting room update, request body:', req.body);
-    console.log('Request params:', req.params);
-    const roomId = parseInt(req.params.roomId);
+    const roomId = req.params.roomId;
+    console.log("Received roomId:", roomId, "type:", typeof roomId);
 
-    if (isNaN(roomId)) {
+    // Kiểm tra id có phải là số hợp lệ không
+    if (!roomId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Room ID is required'
+      });
+    }
+
+    // Chuyển đổi id thành số và kiểm tra
+    const roomIdNumber = parseInt(roomId, 10);
+    if (isNaN(roomIdNumber)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid room ID format'
       });
     }
 
-    // Lấy dữ liệu cập nhật từ form
-    const data = {
-      buildingId: req.body.buildingId ? parseInt(req.body.buildingId) : undefined,
-      roomNumber: req.body.roomNumber,
-      floorNumber: req.body.floorNumber ? parseInt(req.body.floorNumber) : undefined,
-      roomType: req.body.roomType,
-      capacity: req.body.capacity ? parseInt(req.body.capacity) : undefined,
-      pricePerMonth: req.body.pricePerMonth ? parseFloat(req.body.pricePerMonth) : undefined,
-      description: req.body.description,
-      amenities: req.body.amenities ? JSON.parse(req.body.amenities) : undefined,
-      status: req.body.status,
-      roomArea: req.body.roomArea ? parseFloat(req.body.roomArea) : undefined,
-      notes: req.body.notes
-    };
-    console.log('Processed data:', data);
+    const {
+      buildingId,
+      roomNumber,
+      floorNumber,
+      roomType,
+      capacity,
+      pricePerMonth,
+      description,
+      roomArea,
+      notes,
+      amenities,
+      status
+    } = req.body;
 
-    // Kiểm tra phòng có tồn tại không
-    const [existingRoom] = await pool.query<RowDataPacket[]>(
-      'SELECT roomImagePath FROM rooms WHERE id = ?',
-      [roomId]
-    );
-    console.log('Existing room query result:', existingRoom);
+    console.log("Received body:", req.body);
 
-    if (!existingRoom.length) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy phòng'
-      });
-    }
-
-    // Xử lý cập nhật ảnh
-    let imagePaths = existingRoom[0].roomImagePath ?
-      JSON.parse(existingRoom[0].roomImagePath) : [];
-    console.log('Initial image paths:', imagePaths);
-
-    if (req.files && Array.isArray(req.files)) {
-      const files = req.files as Express.Multer.File[];
-      console.log('Uploaded files:', files.length);
-
-      // Nếu không giữ lại ảnh cũ (keepExisting = false)
-      if (req.body.keepExisting !== 'true') {
-        // Xóa các file ảnh cũ
-        for (const oldPath of imagePaths) {
-          try {
-            fs.unlinkSync(oldPath);
-          } catch (err) {
-            console.error(`Lỗi xóa file ảnh: ${oldPath}`);
-          }
-        }
-        imagePaths = [];
-      }
-
-      // Thêm đường dẫn ảnh mới
-      const newPaths = files.map(file => file.path);
-      imagePaths = [...imagePaths, ...newPaths];
-      console.log('Updated image paths:', imagePaths);
-    }
-
-    // Tạo câu query cập nhật động
-    const updates = [];
-    const values = [];
-
-    // Chỉ cập nhật các trường có dữ liệu mới
-    for (const [key, value] of Object.entries(data)) {
-      if (value !== undefined) {
-        updates.push(`${key} = ?`);
-        values.push(key === 'amenities' ? JSON.stringify(value) : value);
-      }
-    }
-
-    // Cập nhật đường dẫn ảnh
-    updates.push('roomImagePath = ?');
-    values.push(JSON.stringify(imagePaths));
-
-    console.log('SQL update parameters - fields:', updates);
-    console.log('SQL update parameters - values:', values);
-
-    if (updates.length === 0) {
+    // Validate required fields
+    if (!buildingId || !roomNumber || !floorNumber || !roomType || !capacity || !pricePerMonth) {
       return res.status(400).json({
         success: false,
-        message: 'Không có dữ liệu cập nhật'
+        message: 'Missing required fields'
       });
     }
 
-    // Thực hiện cập nhật
-    try {
-      const updateResult = await pool.query(
-        `UPDATE rooms SET ${updates.join(', ')} WHERE id = ?`,
-        [...values, roomId]
-      );
-      console.log('Update result:', updateResult);
+    // Check if building exists
+    const [buildingResult] = await pool.query<RowDataPacket[]>(
+      'SELECT id, name FROM buildings WHERE id = ?',
+      [buildingId]
+    );
 
-      res.json({
-        success: true,
-        message: 'Cập nhật phòng thành công',
-        data: { imagePaths }
-      });
-    } catch (error) {
-      console.error('Database error in updateRoom:', error);
-      res.status(500).json({
+    if (buildingResult.length === 0) {
+      return res.status(404).json({
         success: false,
-        message: 'Lỗi cơ sở dữ liệu khi cập nhật phòng'
+        message: 'Building not found'
       });
     }
+
+    // Check if room exists
+    const [roomResult] = await pool.query<RowDataPacket[]>(
+      'SELECT * FROM rooms WHERE id = ?',
+      [roomIdNumber]
+    );
+
+    if (roomResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Room not found'
+      });
+    }
+
+    const existingRoom = roomResult[0];
+
+    // Check if the new room number already exists (but not for this room)
+    if (roomNumber !== existingRoom.roomNumber) {
+      const [roomExistsResult] = await pool.query<RowDataPacket[]>(
+        'SELECT id FROM rooms WHERE buildingId = ? AND roomNumber = ? AND id != ?',
+        [buildingId, roomNumber, roomIdNumber]
+      );
+
+      if (roomExistsResult.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Room number already exists in this building'
+        });
+      }
+    }
+
+    // Check current occupancy from contracts instead of relying on input
+    const [occupancyResult] = await pool.query<RowDataPacket[]>(
+      'SELECT COUNT(*) as currentOccupancy FROM contracts WHERE roomId = ? AND status = "active"',
+      [roomIdNumber]
+    );
+
+    const currentOccupancy = occupancyResult[0].currentOccupancy;
+
+    // If changing capacity, check if it's valid
+    if (capacity < currentOccupancy) {
+      return res.status(400).json({
+        success: false,
+        message: `New capacity (${capacity}) cannot be less than current occupancy (${currentOccupancy})`
+      });
+    }
+
+    // Update room
+    const result = await pool.query(
+      `UPDATE rooms SET 
+        buildingId = ?, 
+        roomNumber = ?, 
+        floorNumber = ?, 
+        roomType = ?, 
+        capacity = ?, 
+        pricePerMonth = ?, 
+        description = ?, 
+        roomArea = ?,
+        notes = ?,
+        amenities = ?,
+        status = ?
+      WHERE id = ?`,
+      [
+        buildingId,
+        roomNumber,
+        floorNumber,
+        roomType,
+        capacity,
+        pricePerMonth,
+        description || null,
+        roomArea || null,
+        notes || null,
+        amenities ? JSON.stringify(amenities) : null,
+        status || existingRoom.status,
+        roomIdNumber
+      ]
+    );
+
+    // Log activity - safely handle the case where req.user might not exist
+    try {
+      if (req.user && req.user.id) {
+        await activityLogService.logActivity(
+          req.user.id,
+          'update',
+          'room',
+          Number(roomIdNumber),
+          `Cập nhật thông tin phòng: ${existingRoom.roomNumber} -> ${roomNumber} tại tòa nhà ${buildingResult[0].name}`,
+          req
+        );
+      }
+    } catch (logError) {
+      console.error('Error logging activity:', logError);
+      // Continue with the response even if logging fails
+    }
+
+    return res.json({
+      success: true,
+      message: 'Room updated successfully'
+    });
   } catch (error) {
-    console.error('Error in updateRoom:', error);
-    res.status(500).json({
+    console.error('Error updating room:', error);
+    return res.status(500).json({
       success: false,
-      message: 'Lỗi khi cập nhật phòng'
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : String(error)
     });
   }
 };
@@ -520,43 +572,63 @@ export const updateRoom = async (req: Request, res: Response) => {
 // Delete Room
 export const deleteRoom = async (req: Request, res: Response) => {
   try {
-    const roomId = parseInt(req.params.roomId);
+    const roomId = req.params.id;
 
-    // Lấy thông tin phòng để xóa ảnh
-    const [room] = await pool.query<RowDataPacket[]>(
-      'SELECT roomImagePath FROM rooms WHERE id = ?',
+    // Check if room exists
+    const [roomResult] = await pool.query<RowDataPacket[]>(
+      `SELECT r.*, b.name as buildingName 
+       FROM rooms r 
+       JOIN buildings b ON r.buildingId = b.id 
+       WHERE r.id = ?`,
       [roomId]
     );
 
-    if (!room.length) {
+    if (roomResult.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy phòng'
+        message: 'Room not found'
       });
     }
 
-    // Xóa các file ảnh từ hệ thống
-    const imagePaths = JSON.parse(room[0].roomImagePath || '[]');
-    for (const path of imagePaths) {
-      try {
-        fs.unlinkSync(path);
-      } catch (err) {
-        console.error(`Lỗi xóa file ảnh: ${path}`);
-      }
+    const room = roomResult[0];
+
+    // Check if room has active contracts
+    const [contractsResult] = await pool.query<RowDataPacket[]>(
+      'SELECT COUNT(*) as count FROM contracts WHERE roomId = ? AND status = "active"',
+      [roomId]
+    );
+
+    if (contractsResult[0].count > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete room with active contracts'
+      });
     }
 
-    // Xóa phòng khỏi database
+    // Delete room
     await pool.query('DELETE FROM rooms WHERE id = ?', [roomId]);
 
-    res.json({
-      success: true,
-      message: 'Xóa phòng thành công'
-    });
+    // Log activity
+    if (req.user?.id) {
+      await activityLogService.logActivity(
+        req.user.id,
+        'delete',
+        'room',
+        Number(roomId),
+        `Xóa phòng: ${room.roomNumber} tại tòa nhà ${room.buildingName}`,
+        req
+      );
+    }
 
+    return res.json({
+      success: true,
+      message: 'Room deleted successfully'
+    });
   } catch (error) {
-    res.status(500).json({
+    console.error('Error deleting room:', error);
+    return res.status(500).json({
       success: false,
-      message: 'Lỗi khi xóa phòng'
+      message: 'Internal server error'
     });
   }
 };
@@ -564,49 +636,109 @@ export const deleteRoom = async (req: Request, res: Response) => {
 // Update Room Status
 export const updateRoomStatus = async (req: Request, res: Response) => {
   try {
-    const roomId = parseInt(req.params.roomId);
-    const { status } = req.body;
+    const roomIdParam = req.params.id;
+    const { status, notes } = req.body;
 
-    // Validate status
-    const validStatuses = ['available', 'full', 'maintenance'];
-    if (!validStatuses.includes(status)) {
+    console.log('Update Room Status Request:', {
+      roomIdParam,
+      status,
+      notes,
+      body: req.body,
+      params: req.params
+    });
+
+    if (!roomIdParam) {
       return res.status(400).json({
         success: false,
-        message: 'Trạng thái không hợp lệ. Các trạng thái hợp lệ là: available, full, maintenance'
+        message: 'Room ID is required'
       });
     }
 
-    // Check if room exists
-    const [room] = await pool.query<RowDataPacket[]>(
-      'SELECT * FROM rooms WHERE id = ?',
+    // Convert to number and validate
+    const roomId = parseInt(roomIdParam, 10);
+    if (isNaN(roomId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid room ID format'
+      });
+    }
+
+    if (!status || !['available', 'maintenance', 'full'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status value'
+      });
+    }
+
+    // Get current room info
+    const [roomResult] = await pool.query<RowDataPacket[]>(
+      `SELECT r.*, b.name as buildingName 
+       FROM rooms r 
+       JOIN buildings b ON r.buildingId = b.id 
+       WHERE r.id = ?`,
       [roomId]
     );
 
-    if (!room.length) {
+    console.log('Room query result:', roomResult);
+
+    if (roomResult.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy phòng'
+        message: 'Room not found'
       });
     }
 
+    const currentRoom = roomResult[0];
+    console.log('Current room:', currentRoom);
+
+    // Check if the room has active contracts when trying to set to maintenance
+    if (status === 'maintenance' && currentRoom.status !== 'maintenance') {
+      const [contractsResult] = await pool.query<RowDataPacket[]>(
+        'SELECT COUNT(*) as activeContracts FROM contracts WHERE roomId = ? AND status = "active"',
+        [roomId]
+      );
+
+      const activeContracts = contractsResult[0].activeContracts;
+      console.log('Active contracts:', activeContracts);
+
+      if (activeContracts > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot set room to maintenance when it has active contracts'
+        });
+      }
+    }
+
     // Update room status
-    await pool.query(
-      'UPDATE rooms SET status = ? WHERE id = ?',
-      [status, roomId]
+    const [updateResult] = await pool.query<OkPacket>(
+      'UPDATE rooms SET status = ?, notes = ? WHERE id = ?',
+      [status, notes || currentRoom.notes, roomId]
     );
 
-    res.json({
-      success: true,
-      message: 'Cập nhật trạng thái phòng thành công',
-      data: { status }
-    });
+    console.log('Update result:', updateResult);
 
-  } catch (error: any) {
+    // Log activity
+    if (req.user?.id) {
+      await activityLogService.logActivity(
+        req.user.id,
+        'status_change',
+        'room',
+        roomId,
+        `Cập nhật trạng thái phòng: ${currentRoom.status} -> ${status} cho phòng ${currentRoom.roomNumber} tại tòa nhà ${currentRoom.buildingName}`,
+        req
+      );
+    }
+
+    return res.json({
+      success: true,
+      message: 'Room status updated successfully'
+    });
+  } catch (error) {
     console.error('Error updating room status:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: 'Lỗi khi cập nhật trạng thái phòng',
-      error: error.message
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : String(error)
     });
   }
 };
@@ -625,7 +757,7 @@ export const addMaintenance = async (req: Request, res: Response) => {
 
     // Kiểm tra phòng có tồn tại không
     const [roomExists] = await pool.query<RowDataPacket[]>(
-      'SELECT id FROM rooms WHERE id = ?',
+      'SELECT id, roomNumber, buildingId FROM rooms WHERE id = ?',
       [roomId]
     );
 
@@ -645,6 +777,15 @@ export const addMaintenance = async (req: Request, res: Response) => {
         message: 'Thiếu thông tin bắt buộc: loại yêu cầu, mô tả'
       });
     }
+
+    // Get building name for logging
+    const [buildingResult] = await pool.query<RowDataPacket[]>(
+      'SELECT name FROM buildings WHERE id = ?',
+      [roomExists[0].buildingId]
+    );
+
+    const buildingName = buildingResult.length > 0 ? buildingResult[0].name : 'Unknown';
+    const roomNumber = roomExists[0].roomNumber;
 
     // Tạo requestNumber
     const requestNumber = `MR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -666,6 +807,28 @@ export const addMaintenance = async (req: Request, res: Response) => {
         new Date()
       ]
     );
+
+    // Log activity
+    if (req.user?.id) {
+      await activityLogService.logActivity(
+        req.user.id,
+        'create',
+        'maintenance',
+        result.insertId,
+        `Tạo yêu cầu bảo trì cho Phòng ${roomNumber} tại tòa nhà ${buildingName}: ${requestType}`,
+        req
+      );
+
+      // Add log for room entity to ensure it appears in room timeline
+      await activityLogService.logActivity(
+        req.user.id,
+        'create',
+        'room',
+        roomId,
+        `Tạo yêu cầu bảo trì cho Phòng ${roomNumber} tại tòa nhà ${buildingName}: ${requestType}`,
+        req
+      );
+    }
 
     res.status(201).json({
       success: true,
@@ -691,10 +854,11 @@ export const addMaintenance = async (req: Request, res: Response) => {
     });
   }
 };
+
 export const processMaintenanceRequest = async (req: Request, res: Response) => {
   try {
     const requestId = parseInt(req.params.requestId);
-    const { status, notes } = req.body;
+    const { status } = req.body;
 
     if (isNaN(requestId)) {
       return res.status(400).json({
@@ -703,39 +867,61 @@ export const processMaintenanceRequest = async (req: Request, res: Response) => 
       });
     }
 
-    // Kiểm tra status có hợp lệ không
-    if (!['pending', 'processing', 'completed', 'rejected'].includes(status)) {
-      return res.status(400).json({
+    // Kiểm tra yêu cầu có tồn tại không
+    const [requestResult] = await pool.query<RowDataPacket[]>(
+      `SELECT mr.*, r.roomNumber, b.name as buildingName
+       FROM maintenance_requests mr
+       JOIN rooms r ON mr.roomId = r.id
+       JOIN buildings b ON r.buildingId = b.id
+       WHERE mr.id = ?`,
+      [requestId]
+    );
+
+    if (requestResult.length === 0) {
+      return res.status(404).json({
         success: false,
-        message: 'Trạng thái không hợp lệ'
+        message: 'Không tìm thấy yêu cầu bảo trì'
       });
     }
 
-    let query = 'UPDATE maintenance_requests SET status = ?';
-    const params = [status];
+    const maintenanceRequest = requestResult[0];
+    const previousStatus = maintenanceRequest.status;
 
-    if (status === 'completed') {
-      query += ', resolvedAt = NOW()';
+    // Chỉ cập nhật trạng thái, bỏ hết các trường khác
+    await pool.query(
+      'UPDATE maintenance_requests SET status = ? WHERE id = ?',
+      [status, requestId]
+    );
+
+    // Log activity
+    if (req.user?.id) {
+      await activityLogService.logActivity(
+        req.user.id,
+        'status_change',
+        'maintenance',
+        requestId,
+        `Cập nhật trạng thái yêu cầu bảo trì: ${previousStatus} -> ${status} cho Phòng ${maintenanceRequest.roomNumber} tại tòa nhà ${maintenanceRequest.buildingName}`,
+        req
+      );
+
+      // Add log for room entity to ensure it appears in room timeline
+      await activityLogService.logActivity(
+        req.user.id,
+        'status_change',
+        'room',
+        maintenanceRequest.roomId,
+        `Cập nhật trạng thái yêu cầu bảo trì: ${previousStatus} -> ${status} cho Phòng ${maintenanceRequest.roomNumber} tại tòa nhà ${maintenanceRequest.buildingName}`,
+        req
+      );
     }
 
-    if (notes) {
-      query += ', resolutionNote = ?';
-      params.push(notes);
-    }
-
-    query += ' WHERE id = ?';
-    params.push(requestId);
-
-    await pool.query(query, params);
-
-    res.json({
+    return res.json({
       success: true,
       message: 'Cập nhật trạng thái yêu cầu thành công'
     });
-
   } catch (error: any) {
     console.error('Error processing maintenance request:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Lỗi khi xử lý yêu cầu bảo trì',
       error: error.message
@@ -757,7 +943,7 @@ export const addUtility = async (req: Request, res: Response) => {
 
     // Kiểm tra phòng có tồn tại không và lấy thông tin phí phòng
     const [roomData] = await pool.query<RowDataPacket[]>(
-      'SELECT id, pricePerMonth FROM rooms WHERE id = ?',
+      'SELECT id, pricePerMonth, roomNumber, buildingId FROM rooms WHERE id = ?',
       [roomId]
     );
 
@@ -769,6 +955,15 @@ export const addUtility = async (req: Request, res: Response) => {
     }
 
     const roomFee = roomData[0].pricePerMonth;
+    const roomNumber = roomData[0].roomNumber;
+
+    // Get building name for logging
+    const [buildingResult] = await pool.query<RowDataPacket[]>(
+      'SELECT name FROM buildings WHERE id = ?',
+      [roomData[0].buildingId]
+    );
+
+    const buildingName = buildingResult.length > 0 ? buildingResult[0].name : 'Unknown';
 
     const {
       month,
@@ -842,6 +1037,18 @@ export const addUtility = async (req: Request, res: Response) => {
       ]
     );
 
+    // Log activity
+    if (req.user?.id) {
+      await activityLogService.logActivity(
+        req.user.id,
+        'create',
+        'invoice',
+        result.insertId,
+        `Tạo hóa đơn tiện ích cho Phòng ${roomNumber} tại tòa nhà ${buildingName} tháng ${month}: ${totalAmount.toLocaleString('vi-VN')} VNĐ`,
+        req
+      );
+    }
+
     res.status(201).json({
       success: true,
       message: 'Thêm hóa đơn tiện ích thành công',
@@ -900,6 +1107,25 @@ export const removeResident = async (req: Request, res: Response) => {
 
     const contractId = contractExists[0].id;
 
+    // Get student and room information for logging
+    const [studentRoomInfo] = await pool.query<RowDataPacket[]>(
+      `SELECT s.fullName as studentName, r.roomNumber, b.name as buildingName
+       FROM students s
+       JOIN rooms r ON r.id = ?
+       JOIN buildings b ON r.buildingId = b.id
+       WHERE s.id = ?`,
+      [roomId, residentId]
+    );
+
+    if (!studentRoomInfo.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy thông tin sinh viên hoặc phòng'
+      });
+    }
+
+    const { studentName, roomNumber, buildingName } = studentRoomInfo[0];
+
     // Bắt đầu transaction
     await pool.query('START TRANSACTION');
 
@@ -922,6 +1148,29 @@ export const removeResident = async (req: Request, res: Response) => {
         [roomId]
       );
 
+      // Log activity
+      if (req.user?.id) {
+        // Log for student entity
+        await activityLogService.logActivity(
+          req.user.id,
+          'remove',
+          'student',
+          residentId,
+          `Xóa sinh viên ${studentName} khỏi Phòng ${roomNumber} tại tòa nhà ${buildingName}`,
+          req
+        );
+
+        // Log for room entity - ensures it shows up in room timeline
+        await activityLogService.logActivity(
+          req.user.id,
+          'remove',
+          'room',
+          roomId,
+          `Xóa sinh viên ${studentName} khỏi Phòng ${roomNumber} tại tòa nhà ${buildingName}`,
+          req
+        );
+      }
+
       // Commit transaction
       await pool.query('COMMIT');
 
@@ -943,6 +1192,98 @@ export const removeResident = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: 'Lỗi khi xóa sinh viên khỏi phòng',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get room timeline history
+ * This function retrieves all activity logs related to a specific room
+ * including student-related activities, invoice activities, and room status changes
+ */
+export const getRoomTimeline = async (req: Request, res: Response) => {
+  try {
+    const roomId = req.params.id;
+
+    if (!roomId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Room ID is required'
+      });
+    }
+
+    // Main query to get all activity logs related to the room
+    const timelineQuery = `
+      SELECT 
+        al.id,
+        al.action,
+        al.entityType,
+        al.entityId,
+        al.description,
+        al.createdAt,
+        CASE 
+          WHEN u.userType = 'admin' THEN a.fullName
+          WHEN u.userType = 'student' THEN s.fullName
+          ELSE 'System'
+        END as userName,
+        u.userType,
+        a.avatarPath as adminAvatar,
+        s.avatarPath as studentAvatar
+      FROM activity_logs al
+      LEFT JOIN users u ON al.userId = u.id
+      LEFT JOIN admins a ON u.id = a.userId AND u.userType = 'admin'
+      LEFT JOIN students s ON u.id = s.userId AND u.userType = 'student'
+      WHERE 
+        (al.entityType = 'room' AND al.entityId = ?) OR
+        (al.entityType = 'student' AND al.description LIKE ?) OR
+        (al.entityType = 'contract' AND al.description LIKE ?) OR
+        (al.entityType = 'invoice' AND al.description LIKE ?) OR
+        (al.entityType = 'maintenance' AND al.description LIKE ?)
+      ORDER BY al.createdAt DESC
+    `;
+
+    const roomNumberQuery = `SELECT roomNumber FROM rooms WHERE id = ?`;
+    const [roomResult] = await pool.query<RowDataPacket[]>(roomNumberQuery, [roomId]);
+
+    if (!roomResult || roomResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Room not found'
+      });
+    }
+
+    const roomNumber = roomResult[0].roomNumber;
+    const searchParam = `%Room ${roomNumber}%`;
+
+    // Execute the query with parameters
+    const [timelineRows] = await pool.query<RowDataPacket[]>(
+      timelineQuery,
+      [roomId, searchParam, searchParam, searchParam, searchParam]
+    );
+
+    // Format the timeline data
+    const timeline = timelineRows.map(row => ({
+      id: row.id,
+      action: row.action,
+      entityType: row.entityType,
+      entityId: row.entityId,
+      description: row.description,
+      timestamp: row.createdAt,
+      userName: row.userName,
+      userType: row.userType,
+      userAvatar: row.userType === 'admin' ? row.adminAvatar : row.studentAvatar
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: timeline
+    });
+  } catch (error: any) {
+    console.error('Error fetching room timeline:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching room timeline',
       error: error.message
     });
   }

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import pool from '../config/database';
 import { RowDataPacket, OkPacket } from 'mysql2';
+import activityLogService from '../services/activityLogService';
 
 export const getAllInvoices = async (req: Request, res: Response) => {
   try {
@@ -316,9 +317,10 @@ export const createInvoice = async (req: Request, res: Response) => {
 
     // Get room information
     const [roomRows] = await pool.query<RowDataPacket[]>(
-      `SELECT id, roomNumber, buildingId, pricePerMonth
-       FROM rooms
-       WHERE id = ?`,
+      `SELECT r.id, r.roomNumber, r.buildingId, r.pricePerMonth, b.name as buildingName
+       FROM rooms r
+       JOIN buildings b ON r.buildingId = b.id
+       WHERE r.id = ?`,
       [roomId]
     );
 
@@ -395,6 +397,31 @@ export const createInvoice = async (req: Request, res: Response) => {
       ]
     );
 
+    // Log activity
+    if (req.user?.id) {
+      const activityDescription = `Tạo hóa đơn: ${invoiceNumber} cho phòng ${room.roomNumber} tòa nhà ${room.buildingName}`;
+
+      // Log to invoice entity
+      await activityLogService.logActivity(
+        req.user.id,
+        'create',
+        'invoice',
+        result.insertId,
+        activityDescription,
+        req
+      );
+
+      // Log to room entity for room timeline
+      await activityLogService.logActivity(
+        req.user.id,
+        'create',
+        'room',
+        Number(roomId),
+        activityDescription,
+        req
+      );
+    }
+
     // Get the created invoice
     const [newInvoice] = await pool.query<RowDataPacket[]>(
       `SELECT * FROM invoices WHERE id = ?`,
@@ -442,6 +469,25 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
       });
     }
 
+    // Get current invoice status for logging
+    const [currentInvoice] = await pool.query<RowDataPacket[]>(
+      `SELECT i.invoiceNumber, i.paymentStatus, r.roomNumber, b.name as buildingName
+       FROM invoices i
+       JOIN rooms r ON i.roomId = r.id
+       JOIN buildings b ON r.buildingId = b.id
+       WHERE i.id = ?`,
+      [invoiceId]
+    );
+
+    if (currentInvoice.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy hóa đơn'
+      });
+    }
+
+    const oldStatus = currentInvoice[0].paymentStatus;
+
     // Update invoice status
     const paymentDate = status === 'paid' ? new Date() : null;
     const [result] = await pool.query<OkPacket>(
@@ -456,6 +502,41 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
         success: false,
         message: 'Không tìm thấy hóa đơn'
       });
+    }
+
+    // Log activity
+    if (req.user?.id) {
+      const activityDescription = `Cập nhật trạng thái hóa đơn: ${oldStatus} -> ${status} cho hóa đơn ${currentInvoice[0].invoiceNumber} (Phòng: ${currentInvoice[0].roomNumber} tòa nhà ${currentInvoice[0].buildingName})`;
+
+      // Get room ID for room timeline
+      const [roomInfo] = await pool.query<RowDataPacket[]>(
+        `SELECT roomId FROM invoices WHERE id = ?`,
+        [invoiceId]
+      );
+
+      const roomId = roomInfo.length > 0 ? roomInfo[0].roomId : null;
+
+      // Log to invoice entity
+      await activityLogService.logActivity(
+        req.user.id,
+        'status_change',
+        'invoice',
+        Number(invoiceId),
+        activityDescription,
+        req
+      );
+
+      // Log to room entity for room timeline if roomId is available
+      if (roomId) {
+        await activityLogService.logActivity(
+          req.user.id,
+          'status_change',
+          'room',
+          roomId,
+          activityDescription,
+          req
+        );
+      }
     }
 
     return res.status(200).json({
@@ -501,6 +582,25 @@ export const updateInvoice = async (req: Request, res: Response) => {
       });
     }
 
+    // Get current invoice details for comparison and logging
+    const [currentInvoice] = await pool.query<RowDataPacket[]>(
+      `SELECT i.*, r.roomNumber, r.id as roomId, b.name as buildingName
+       FROM invoices i
+       JOIN rooms r ON i.roomId = r.id
+       JOIN buildings b ON r.buildingId = b.id
+       WHERE i.id = ?`,
+      [invoiceId]
+    );
+
+    if (currentInvoice.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy hóa đơn'
+      });
+    }
+
+    const invoice = currentInvoice[0];
+
     // Calculate total amount
     const totalAmount = Number(roomFee) + Number(electricFee) + Number(waterFee) + Number(serviceFee);
 
@@ -545,6 +645,60 @@ export const updateInvoice = async (req: Request, res: Response) => {
       });
     }
 
+    // Log activity
+    if (req.user?.id) {
+      // Format month for display
+      const invoiceMonthFormatted = new Date(invoiceMonth).toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' });
+      const oldInvoiceMonthFormatted = invoice.invoiceMonth ?
+        new Date(invoice.invoiceMonth).toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' }) : '-';
+
+      // Create a detailed description of changes
+      let description = `Cập nhật hóa đơn cho phòng ${invoice.roomNumber} tòa nhà ${invoice.buildingName}: `;
+      const changes = [];
+
+      if (invoiceMonthFormatted !== oldInvoiceMonthFormatted) {
+        changes.push(`Tháng: ${oldInvoiceMonthFormatted} → ${invoiceMonthFormatted}`);
+      }
+
+      if (Number(electricFee) !== Number(invoice.electricFee)) {
+        changes.push(`Phí điện: ${invoice.electricFee.toLocaleString('vi-VN')} → ${Number(electricFee).toLocaleString('vi-VN')} VNĐ`);
+      }
+
+      if (Number(waterFee) !== Number(invoice.waterFee)) {
+        changes.push(`Phí nước: ${invoice.waterFee.toLocaleString('vi-VN')} → ${Number(waterFee).toLocaleString('vi-VN')} VNĐ`);
+      }
+
+      if (Number(serviceFee) !== Number(invoice.serviceFee)) {
+        changes.push(`Phí dịch vụ: ${invoice.serviceFee.toLocaleString('vi-VN')} → ${Number(serviceFee).toLocaleString('vi-VN')} VNĐ`);
+      }
+
+      if (totalAmount !== Number(invoice.totalAmount)) {
+        changes.push(`Tổng cộng: ${invoice.totalAmount.toLocaleString('vi-VN')} → ${totalAmount.toLocaleString('vi-VN')} VNĐ`);
+      }
+
+      description += changes.join(', ');
+
+      // Log to invoice entity
+      await activityLogService.logActivity(
+        req.user.id,
+        'update',
+        'invoice',
+        Number(invoiceId),
+        description,
+        req
+      );
+
+      // Log to room entity for room timeline
+      await activityLogService.logActivity(
+        req.user.id,
+        'update',
+        'room',
+        invoice.roomId,
+        description,
+        req
+      );
+    }
+
     // Get updated invoice data
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT * FROM invoices WHERE id = ?`,
@@ -570,6 +724,25 @@ export const deleteInvoice = async (req: Request, res: Response) => {
   try {
     const { invoiceId } = req.params;
 
+    // Get invoice details before deletion for logging
+    const [invoiceDetails] = await pool.query<RowDataPacket[]>(
+      `SELECT i.invoiceNumber, r.roomNumber, b.name as buildingName, r.id as roomId
+       FROM invoices i
+       JOIN rooms r ON i.roomId = r.id
+       JOIN buildings b ON r.buildingId = b.id
+       WHERE i.id = ?`,
+      [invoiceId]
+    );
+
+    if (invoiceDetails.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy hóa đơn'
+      });
+    }
+
+    const invoice = invoiceDetails[0];
+
     // Delete invoice
     const [result] = await pool.query<OkPacket>(
       `DELETE FROM invoices WHERE id = ?`,
@@ -581,6 +754,31 @@ export const deleteInvoice = async (req: Request, res: Response) => {
         success: false,
         message: 'Không tìm thấy hóa đơn'
       });
+    }
+
+    // Log activity
+    if (req.user?.id) {
+      const activityDescription = `Xóa hóa đơn: ${invoice.invoiceNumber} của phòng ${invoice.roomNumber} tòa nhà ${invoice.buildingName}`;
+
+      // Log to invoice entity
+      await activityLogService.logActivity(
+        req.user.id,
+        'delete',
+        'invoice',
+        Number(invoiceId),
+        activityDescription,
+        req
+      );
+
+      // Log to room entity for room timeline
+      await activityLogService.logActivity(
+        req.user.id,
+        'delete',
+        'room',
+        invoice.roomId,
+        activityDescription,
+        req
+      );
     }
 
     return res.status(200).json({
@@ -596,7 +794,6 @@ export const deleteInvoice = async (req: Request, res: Response) => {
     });
   }
 };
-
 
 // Public lookup API for students to find their invoices
 export const searchInvoices = async (req: Request, res: Response) => {

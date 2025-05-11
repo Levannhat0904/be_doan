@@ -2,6 +2,7 @@
 import { Request, Response, RequestHandler } from 'express';
 import pool from '../config/database';
 import { RowDataPacket, OkPacket } from 'mysql2';
+import activityLogService from '../services/activityLogService';
 
 interface Building {
   id: number;
@@ -89,6 +90,18 @@ export const createBuilding = async (req: Request, res: Response) => {
       [name, totalFloors, description, status || 'active']
     );
 
+    // Log activity
+    if (req.user?.id) {
+      await activityLogService.logActivity(
+        req.user.id,
+        'create',
+        'building',
+        result.insertId,
+        `Created building: ${name}`,
+        req
+      );
+    }
+
     res.status(201).json({
       data: { id: result.insertId },
       message: 'Building created successfully'
@@ -122,6 +135,18 @@ export const updateBuilding = async (req: Request, res: Response) => {
       [name, totalFloors, description, status, id]
     );
 
+    // Log activity
+    if (req.user?.id) {
+      await activityLogService.logActivity(
+        req.user.id,
+        'update',
+        'building',
+        Number(id),
+        `Updated building: ${building[0].name} -> ${name}`,
+        req
+      );
+    }
+
     res.json({
       message: 'Building updated successfully'
     });
@@ -148,7 +173,25 @@ export const deleteBuilding = async (req: Request, res: Response) => {
       return;
     }
 
+    // Get building name for logging
+    const [building] = await pool.query<RowDataPacket[]>(
+      'SELECT * FROM buildings WHERE id = ?',
+      [id]
+    );
+
     await pool.query('DELETE FROM buildings WHERE id = ?', [id]);
+
+    // Log activity
+    if (req.user?.id && building.length > 0) {
+      await activityLogService.logActivity(
+        req.user.id,
+        'delete',
+        'building',
+        Number(id),
+        `Deleted building: ${building[0].name}`,
+        req
+      );
+    }
 
     res.json({
       message: 'Building deleted successfully'

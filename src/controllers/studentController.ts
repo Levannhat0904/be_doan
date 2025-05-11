@@ -3,6 +3,7 @@ import { StudentService } from '../services/studentService';
 import fs from 'fs';
 import pool from '../config/database';
 import { RowDataPacket, OkPacket } from 'mysql2';
+import activityLogService from '../services/activityLogService';
 
 interface CreateStudentRequest {
   email: string;
@@ -81,6 +82,19 @@ export class StudentController {
       // Validate và tạo sinh viên
       try {
         const result = await StudentService.createStudent(data);
+
+        // Log activity
+        if (req.user?.id) {
+          await activityLogService.logActivity(
+            req.user.id,
+            'create',
+            'student',
+            result.id,
+            `Created student: ${data.fullName} (${data.studentCode})`,
+            req
+          );
+        }
+
         res.status(201).json({
           success: true,
           message: 'Đăng ký thành công, vui lòng chờ admin phê duyệt',
@@ -108,8 +122,24 @@ export class StudentController {
   activateStudent: RequestHandler = async (req, res) => {
     try {
       const { id } = req.params;
+      const studentId = Number(id);
 
-      await StudentService.activateStudent(Number(id));
+      // Get student info for logging
+      const student = await StudentService.getStudentById(studentId);
+
+      await StudentService.activateStudent(studentId);
+
+      // Log activity
+      if (req.user?.id) {
+        await activityLogService.logActivity(
+          req.user.id,
+          'update',
+          'student',
+          studentId,
+          `Activated student account: ${student.fullName} (${student.studentCode})`,
+          req
+        );
+      }
 
       res.json({
         success: true,
@@ -127,8 +157,25 @@ export class StudentController {
   rejectStudent: RequestHandler = async (req, res) => {
     try {
       const { id } = req.params;
+      const studentId = Number(id);
 
-      await StudentService.rejectStudent(Number(id));
+      // Get student info for logging
+      const student = await StudentService.getStudentById(studentId);
+
+      await StudentService.rejectStudent(studentId);
+
+      // Log activity
+      if (req.user?.id) {
+        await activityLogService.logActivity(
+          req.user.id,
+          'update',
+          'student',
+          studentId,
+          `Rejected student account: ${student.fullName} (${student.studentCode})`,
+          req
+        );
+      }
+
       res.json({
         success: true,
         message: 'Từ chối tài khoản thành công'
@@ -140,7 +187,6 @@ export class StudentController {
       });
     }
   };
-
 
   getAllStudents: RequestHandler = async (req, res) => {
     try {

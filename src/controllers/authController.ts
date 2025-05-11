@@ -1,6 +1,7 @@
 import { Request, Response, RequestHandler } from 'express';
 import { AuthService } from '../services/authService';
 import { LoginRequest, LogoutRequest, LogoutResponse } from '../types/express';
+import activityLogService from '../services/activityLogService';
 
 export class AuthController {
   login: RequestHandler = async (req, res) => {
@@ -16,6 +17,19 @@ export class AuthController {
       }
 
       const result = await AuthService.login(email, password);
+
+      // Log login activity
+      if (result.user && result.user.id) {
+        await activityLogService.logActivity(
+          result.user.id,
+          'login',
+          'user',
+          result.user.id,
+          `User logged in: ${email}`,
+          req
+        );
+      }
+
       res.json({
         success: true,
         data: result
@@ -40,6 +54,17 @@ export class AuthController {
       }
 
       await AuthService.logout(userId);
+
+      // Log logout activity
+      await activityLogService.logActivity(
+        userId,
+        'logout',
+        'user',
+        userId,
+        `User logged out`,
+        req
+      );
+
       res.json({
         success: true,
         message: 'Đăng xuất thành công'

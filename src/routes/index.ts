@@ -8,6 +8,7 @@ import buildingRoutes from './buildingRoutes';
 import invoiceRoutes from './invoiceRoutes';
 import dashboardRoutes from './dashboardRoutes';
 import contractRoutes from './contractRoutes';
+import activityLogRoutes from './activityLogRoutes';
 
 const router = express.Router();
 
@@ -21,4 +22,5 @@ router.use('/buildings', buildingRoutes);
 router.use('/contracts', contractRoutes);
 router.use('/', invoiceRoutes);
 router.use('/dashboard', dashboardRoutes);
+router.use('/activity-logs', activityLogRoutes);
 export default router; 

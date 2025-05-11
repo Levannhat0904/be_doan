@@ -10,7 +10,8 @@ import {
   addMaintenance,
   addUtility,
   removeResident,
-  processMaintenanceRequest
+  processMaintenanceRequest,
+  getRoomTimeline
 } from '../controllers/roomController';
 import { updateInvoiceStatus } from '../controllers/invoiceController';
 import { authMiddleware } from '../middlewares/authMiddleware';
@@ -41,12 +42,18 @@ router.delete('/:roomId', authMiddleware, (req, res, next) => {
 router.get('/:id/detail', authMiddleware, (req, res, next) => {
   getRoomDetail(req, res).catch(next);
 });
+
+// Get room timeline history
+router.get('/:id/timeline', authMiddleware, (req, res, next) => {
+  getRoomTimeline(req, res).catch(next);
+});
+
 router.put('/maintenance-requests/:requestId', authMiddleware, (req, res, next) => {
   processMaintenanceRequest(req, res).catch(next);
 });
 
 // Update room status
-router.put('/:roomId/status', authMiddleware, (req, res, next) => {
+router.put('/:id/status', authMiddleware, (req, res, next) => {
   updateRoomStatus(req, res).catch(next);
 });
 
