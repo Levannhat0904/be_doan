@@ -7,6 +7,7 @@ import logger from './utils/logger';
 import initializeDatabase from './scripts/initDb';
 import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
+import sendEmail from './services/sendMail';
 
 dotenv.config();
 
@@ -19,7 +20,8 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false, // Disable for development
 }));
 app.use(cors({
-  origin: ['http://localhost:3001', 'http://localhost:3000', process.env.CORS_ORIGIN || '*'],
+  origin: ['http://localhost:3001', 'http://localhost:3000', process.env.CORS_ORIGIN || '*', 'https://quan-ly-ktx-pqdlc5ijk-nhatles-projects-6a7533d6.vercel.app', "https://quan-ly-ktx-fe.vercel.app"],
+  // origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
@@ -44,6 +46,32 @@ app.use('/api', routes);
 // Basic route
 app.get('/', (req, res) => {
   res.json({ message: 'Dormitory Management System API' });
+});
+app.get('/send-email', async (req, res) => {
+  try {
+    const result = await sendEmail();
+    logger.info('Email sent successfully:', result);
+    res.json({
+      success: true,
+      message: 'Email sent successfully',
+      data: result
+    });
+  } catch (error: any) {
+    logger.error('Email sending failed:', {
+      statusCode: error.statusCode,
+      message: error.message,
+      response: error.response?.body
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send email',
+      details: {
+        statusCode: error.statusCode,
+        message: error.message,
+        response: error.response?.body
+      }
+    });
+  }
 });
 
 // Database initialization route (should be protected in production)
