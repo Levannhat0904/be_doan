@@ -75,12 +75,28 @@ const uploadMiddleware = (req: express.Request, res: express.Response, next: exp
 
 // API routes
 router.post('/', uploadMiddleware, studentController.createStudent);
+
+// Debug route to test authentication
+router.get('/test-auth', authMiddleware, (req, res) => {
+  res.json({
+    success: true,
+    message: 'Authentication successful',
+    user: req.user
+  });
+});
+
+// Special routes that MUST come before dynamic routes with ID parameters
+router.get('/current/detail', authMiddleware, studentController.getCurrentStudentDetail);
+router.get('/current/invoices', authMiddleware, studentController.getCurrentStudentInvoices);
+router.get('/', authMiddleware, isAdmin, studentController.getAllStudents);
+
+// Dynamic routes with parameters
 router.patch('/:id/activate', authMiddleware, isAdmin, studentController.activateStudent);
 router.patch('/:id/reject', authMiddleware, isAdmin, studentController.rejectStudent);
-router.get('/', authMiddleware, isAdmin, studentController.getAllStudents);
-router.get('/:id', authMiddleware, isAdmin, studentController.getStudentById);
-router.get('/:id/detail', authMiddleware, isAdmin, studentController.getStudentDetailById);
+router.get('/:id', authMiddleware, studentController.getStudentById);
+router.get('/:id/detail', authMiddleware, studentController.getStudentDetailById);
 router.put('/:id/status', authMiddleware, isAdmin, studentController.updateStudentStatus);
 router.put('/:id/dormitory', authMiddleware, isAdmin, studentController.updateStudentDormitory);
+router.put('/:id/profile', authMiddleware, uploadMiddleware, studentController.updateStudentProfile);
 
 export default router; 

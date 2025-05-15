@@ -239,6 +239,32 @@ export class StudentController {
       const { id } = req.params;
       const studentId = Number(id);
 
+      // Kiểm tra quyền truy cập: admin có thể xem tất cả, sinh viên chỉ có thể xem thông tin của mình
+      const isAdmin = req.user?.userType === 'admin';
+
+      // For student users, first get their student profile ID to compare
+      let isOwnProfile = false;
+
+      if (req.user?.userType === 'student') {
+        // If student user, check if they are looking at their own profile
+        const [studentRecord] = await pool.query<RowDataPacket[]>(
+          'SELECT id FROM students WHERE userId = ?',
+          [req.user?.id || 0]
+        );
+
+        if (studentRecord.length > 0) {
+          isOwnProfile = studentRecord[0].id === studentId;
+        }
+      }
+
+      if (!isAdmin && !isOwnProfile) {
+        res.status(403).json({
+          success: false,
+          message: 'Bạn không có quyền xem thông tin này'
+        });
+        return;
+      }
+
       // Get student information
       const student = await StudentService.getStudentById(studentId);
 
@@ -485,4 +511,292 @@ export class StudentController {
       });
     }
   }
+
+  updateStudentProfile: RequestHandler = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const studentId = Number(id);
+
+      // Kiểm tra quyền - chỉ admin hoặc chính sinh viên đó có thể cập nhật
+      const isAdmin = req.user?.userType === 'admin';
+      const isOwnProfile = req.user?.id === studentId;
+
+      if (!isAdmin && !isOwnProfile) {
+        res.status(403).json({
+          success: false,
+          message: 'Bạn không có quyền cập nhật thông tin này'
+        });
+        return;
+      }
+
+      // Tạo object chứa dữ liệu cần cập nhật
+      const updateData: any = {};
+
+      // Các trường có thể cập nhật
+      const allowedFields = [
+        'fullName', 'birthDate', 'gender', 'phone',
+        'province', 'district', 'ward', 'address',
+        'faculty', 'major', 'className', 'email'
+      ];
+
+      // Thêm các trường từ request body vào updateData
+      allowedFields.forEach(field => {
+        if (req.body[field] !== undefined) {
+          updateData[field] = req.body[field];
+        }
+      });
+
+      // Xử lý file ảnh đại diện nếu có
+      if (req.file) {
+        updateData.avatarPath = `/uploads/students/${req.file.filename}`;
+
+        // Lấy thông tin sinh viên để xóa ảnh cũ nếu có
+        const student = await StudentService.getStudentById(studentId);
+        if (student.avatarPath) {
+          const oldPath = `uploads/${student.avatarPath.split('/uploads/')[1]}`;
+          if (fs.existsSync(oldPath)) {
+            fs.unlinkSync(oldPath);
+          }
+        }
+      }
+
+      // Cập nhật thông tin sinh viên trong database
+      await pool.query(`
+        UPDATE students
+        SET ?
+        WHERE id = ?
+      `, [updateData, studentId]);
+
+      // Log activity
+      if (req.user?.id) {
+        await activityLogService.logActivity(
+          req.user.id,
+          'update',
+          'student',
+          studentId,
+          `Updated student profile: ${updateData.fullName || ''}`,
+          req
+        );
+      }
+
+      res.json({
+        success: true,
+        message: 'Cập nhật thông tin sinh viên thành công'
+      });
+
+    } catch (error) {
+      console.error('Error updating student profile:', error);
+      res.status(400).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Lỗi cập nhật thông tin sinh viên'
+      });
+    }
+  };
+
+  getCurrentStudentDetail: RequestHandler = async (req, res) => {
+    try {
+      // Ensure user is logged in 
+      if (!req.user) {
+        console.log('No user found in request');
+        res.status(403).json({
+          success: false,
+          message: 'Unauthorized access - No user in request'
+        });
+        return;
+      }
+
+      console.log('Current user in getCurrentStudentDetail:', req.user);
+
+      // Get student ID from the user ID
+      const [studentRecord] = await pool.query<RowDataPacket[]>(
+        'SELECT id FROM students WHERE userId = ?',
+        [req.user?.id || 0]
+      );
+
+      console.log('Found student records:', studentRecord);
+
+      if (studentRecord.length === 0) {
+        console.log('No student record found for userId:', req.user.id);
+        res.status(404).json({
+          success: false,
+          message: 'Student profile not found for user ID: ' + req.user.id
+        });
+        return;
+      }
+
+      const studentId = studentRecord[0].id;
+
+      console.log('Found student ID:', studentId);
+
+      // Get student information
+      const student = await StudentService.getStudentById(studentId);
+
+      // Get dormitory information from contracts or rooms
+      const [dormitory] = await pool.query<RowDataPacket[]>(`
+        SELECT 
+          c.id as contractId,
+          r.id as roomId,
+          r.buildingId,
+          b.name as buildingName,
+          r.roomNumber,
+          r.floorNumber,
+          c.startDate as checkInDate,
+          c.endDate as checkOutDate,
+          c.depositAmount,
+          c.monthlyFee,
+          CONCAT('Bed-', '1') as bedNumber,
+          '1' as semester,
+          '2023-2024' as schoolYear,
+          c.status
+        FROM contracts c
+        JOIN rooms r ON c.roomId = r.id
+        JOIN buildings b ON r.buildingId = b.id
+        WHERE c.studentId = ? AND c.status = 'active'
+        LIMIT 1
+      `, [studentId]);
+
+      // Get history records
+      const [history] = await pool.query<RowDataPacket[]>(`
+        SELECT 
+          al.id,
+          al.action,
+          al.description,
+          al.createdAt as date,
+          CONCAT(u.email) as user
+        FROM activity_logs al
+        JOIN users u ON al.userId = u.id
+        WHERE al.entityType = 'student' AND al.entityId = ?
+        ORDER BY al.createdAt DESC
+        LIMIT 10
+      `, [studentId]);
+
+      // If there's no history yet, add basic registration entry
+      const historyItems = history.length > 0 ? history : [{
+        id: 1,
+        action: 'register',
+        description: 'Đăng ký ký túc xá',
+        date: student.createdAt,
+        user: student.email
+      }];
+
+      // Get roommates if student has a dormitory
+      let roommates: RowDataPacket[] = [];
+      if (dormitory && dormitory.length > 0 && dormitory[0].roomId) {
+        const [roommatResults] = await pool.query<RowDataPacket[]>(`
+          SELECT 
+            s.id,
+            s.studentCode,
+            s.fullName,
+            s.gender,
+            s.status,
+            s.avatarPath
+          FROM contracts c
+          JOIN students s ON c.studentId = s.id
+          WHERE c.roomId = ? AND c.studentId != ? AND c.status = 'active'
+        `, [dormitory[0].roomId, studentId]);
+
+        roommates = roommatResults;
+      }
+
+      res.json({
+        success: true,
+        data: {
+          student,
+          dormitory: dormitory && dormitory.length > 0 ? dormitory[0] : {},
+          history: historyItems,
+          roommates: roommates || []
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching current student details:', error);
+      res.status(400).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Lỗi lấy thông tin chi tiết sinh viên'
+      });
+    }
+  };
+
+  // Get current student's invoices
+  getCurrentStudentInvoices: RequestHandler = async (req, res) => {
+    try {
+      if (!req.user) {
+        res.status(403).json({
+          success: false,
+          message: 'Unauthorized access'
+        });
+      }
+
+      // Get student ID from user ID
+      const [studentResults] = await pool.query<RowDataPacket[]>(
+        'SELECT id FROM students WHERE userId = ?',
+        [req.user?.id || 0]
+      );
+
+      if (studentResults.length === 0) {
+        res.status(404).json({
+          success: false,
+          message: 'Student profile not found'
+        });
+      }
+
+      const studentId = studentResults[0].id;
+
+      // Get student's invoices
+      const [invoiceRows] = await pool.query<RowDataPacket[]>(
+        `SELECT 
+           i.id, i.invoiceNumber, i.invoiceMonth, i.dueDate,
+           i.roomFee, i.electricFee, i.waterFee, i.serviceFee,
+           i.totalAmount, i.paymentStatus, i.paymentDate, i.paymentMethod,
+           r.id as roomId, r.roomNumber, r.floorNumber,
+           b.id as buildingId, b.name as buildingName
+         FROM invoices i
+         JOIN contracts c ON i.roomId = c.roomId
+         JOIN rooms r ON i.roomId = r.id
+         JOIN buildings b ON r.buildingId = b.id
+         WHERE c.studentId = ? AND (i.invoiceMonth BETWEEN c.startDate AND c.endDate OR c.endDate IS NULL)
+         ORDER BY i.invoiceMonth DESC`,
+        [studentId]
+      );
+
+      res.status(200).json({
+        success: true,
+        data: {
+          invoices: invoiceRows.map(invoice => ({
+            id: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            roomId: invoice.roomId,
+            roomNumber: invoice.roomNumber,
+            floorNumber: invoice.floorNumber,
+            buildingId: invoice.buildingId,
+            buildingName: invoice.buildingName,
+            invoiceMonth: invoice.invoiceMonth,
+            electricity: Math.round(invoice.electricFee / 2000), // kWh
+            water: Math.round(invoice.waterFee / 10000), // m3
+            electricFee: invoice.electricFee,
+            waterFee: invoice.waterFee,
+            serviceFee: invoice.serviceFee,
+            roomFee: invoice.roomFee,
+            totalAmount: invoice.totalAmount,
+            dueDate: invoice.dueDate,
+            paymentStatus: invoice.paymentStatus,
+            paymentDate: invoice.paymentDate,
+            paymentMethod: invoice.paymentMethod
+          })),
+          pagination: {
+            total: invoiceRows.length,
+            page: 1,
+            limit: invoiceRows.length,
+            totalPages: 1
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching student invoices:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Lỗi khi truy vấn hóa đơn',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  };
 } 

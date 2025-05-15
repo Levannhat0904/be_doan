@@ -1288,3 +1288,198 @@ export const getRoomTimeline = async (req: Request, res: Response) => {
     });
   }
 };
+
+// Get maintenance requests for a student
+export const getStudentMaintenanceRequests = async (req: Request, res: Response) => {
+  try {
+    const studentId = parseInt(req.params.studentId);
+
+    if (isNaN(studentId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID sinh viên không hợp lệ'
+      });
+    }
+
+    // Check if user has permission (admin or the student themself)
+    const isAdmin = req.user?.userType === 'admin';
+    const isOwnRequest = req.user?.id === studentId;
+
+    if (!isAdmin && !isOwnRequest) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền xem thông tin này'
+      });
+    }
+
+    // Get maintenance requests for this student
+    const [requests] = await pool.query<RowDataPacket[]>(
+      `SELECT 
+        mr.id, mr.requestNumber, mr.roomId, mr.studentId,
+        mr.requestType, mr.description, mr.priority, mr.status,
+        mr.createdAt, mr.resolvedAt, mr.resolutionNote,
+        r.roomNumber, b.name as buildingName
+      FROM maintenance_requests mr
+      JOIN rooms r ON mr.roomId = r.id
+      JOIN buildings b ON r.buildingId = b.id
+      WHERE mr.studentId = ?
+      ORDER BY mr.createdAt DESC`,
+      [studentId]
+    );
+
+    // Get image paths for each request (if any)
+    const requestsWithImages = await Promise.all(
+      requests.map(async (request) => {
+        const [images] = await pool.query<RowDataPacket[]>(
+          'SELECT imagePath FROM maintenance_request_images WHERE requestId = ?',
+          [request.id]
+        );
+
+        return {
+          ...request,
+          imagePaths: images.map(img => img.imagePath),
+        };
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: requestsWithImages
+    });
+  } catch (error) {
+    console.error('Error fetching student maintenance requests:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy danh sách yêu cầu bảo trì'
+    });
+  }
+};
+
+// Get maintenance requests for a room
+export const getRoomMaintenanceRequests = async (req: Request, res: Response) => {
+  try {
+    const roomId = parseInt(req.params.roomId);
+
+    if (isNaN(roomId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID phòng không hợp lệ'
+      });
+    }
+
+    // Get maintenance requests for this room
+    const [requests] = await pool.query<RowDataPacket[]>(
+      `SELECT 
+        mr.id, mr.requestNumber, mr.roomId, mr.studentId,
+        mr.requestType, mr.description, mr.priority, mr.status,
+        mr.createdAt, mr.resolvedAt, mr.resolutionNote,
+        r.roomNumber, b.name as buildingName,
+        s.fullName as studentName, s.studentCode
+      FROM maintenance_requests mr
+      JOIN rooms r ON mr.roomId = r.id
+      JOIN buildings b ON r.buildingId = b.id
+      LEFT JOIN students s ON mr.studentId = s.id
+      WHERE mr.roomId = ?
+      ORDER BY mr.createdAt DESC`,
+      [roomId]
+    );
+
+    // If there are no requests, return an empty array instead of failing
+    if (!requests || requests.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: []
+      });
+    }
+
+    // Skip the image fetching since the table might not exist
+    const requestsWithImages = requests.map(request => ({
+      ...request,
+      imagePaths: [],
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: requestsWithImages
+    });
+  } catch (error) {
+    console.error('Error fetching room maintenance requests:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy danh sách yêu cầu bảo trì'
+    });
+  }
+};
+
+// Cancel a maintenance request
+export const cancelMaintenanceRequest = async (req: Request, res: Response) => {
+  try {
+    const requestId = parseInt(req.params.id);
+
+    if (isNaN(requestId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID yêu cầu không hợp lệ'
+      });
+    }
+
+    // Get request info to check permissions
+    const [requestInfo] = await pool.query<RowDataPacket[]>(
+      'SELECT studentId, status FROM maintenance_requests WHERE id = ?',
+      [requestId]
+    );
+
+    if (requestInfo.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy yêu cầu bảo trì'
+      });
+    }
+
+    // Check if user has permission (admin or the student who created the request)
+    const isAdmin = req.user?.userType === 'admin';
+    const isOwnRequest = req.user?.id === requestInfo[0].studentId;
+
+    if (!isAdmin && !isOwnRequest) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền hủy yêu cầu này'
+      });
+    }
+
+    // Check if request can be canceled (only pending requests can be canceled)
+    if (requestInfo[0].status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'Chỉ những yêu cầu đang chờ xử lý mới có thể bị hủy'
+      });
+    }
+
+    // Update request status to 'canceled'
+    await pool.query(
+      'UPDATE maintenance_requests SET status = "canceled" WHERE id = ?',
+      [requestId]
+    );
+
+    // Log the activity
+    if (req.user?.id) {
+      await pool.query(
+        `INSERT INTO activity_logs 
+         (userId, action, entityType, entityId, description)
+         VALUES (?, 'cancel', 'maintenance_request', ?, 'Hủy yêu cầu bảo trì')`,
+        [req.user.id, requestId]
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Hủy yêu cầu bảo trì thành công'
+    });
+  } catch (error) {
+    console.error('Error canceling maintenance request:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi hủy yêu cầu bảo trì'
+    });
+  }
+};

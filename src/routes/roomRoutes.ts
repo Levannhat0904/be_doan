@@ -11,7 +11,10 @@ import {
   addUtility,
   removeResident,
   processMaintenanceRequest,
-  getRoomTimeline
+  getRoomTimeline,
+  getStudentMaintenanceRequests,
+  cancelMaintenanceRequest,
+  getRoomMaintenanceRequests
 } from '../controllers/roomController';
 import { updateInvoiceStatus } from '../controllers/invoiceController';
 import { authMiddleware } from '../middlewares/authMiddleware';
@@ -61,6 +64,27 @@ router.put('/:id/status', authMiddleware, (req, res, next) => {
 router.post('/:roomId/maintenance', authMiddleware, (req, res, next) => {
   addMaintenance(req, res).catch(next);
 });
+
+// Add maintenance request endpoint for students
+router.post('/maintenance-requests', authMiddleware, uploadRoomImages, (req, res, next) => {
+  addMaintenance(req, res).catch(next);
+});
+
+// Cancel maintenance request
+router.delete('/maintenance-requests/:id', authMiddleware, (req, res, next) => {
+  cancelMaintenanceRequest(req, res).catch(next);
+});
+
+// Get maintenance requests for a room
+router.get('/:roomId/maintenance-requests', authMiddleware, (req, res, next) => {
+  getRoomMaintenanceRequests(req, res).catch(next);
+});
+
+// Get maintenance requests for a student
+router.get('/students/:studentId/maintenance-requests', authMiddleware, (req, res, next) => {
+  getStudentMaintenanceRequests(req, res).catch(next);
+});
+
 // Thêm vào file be/src/routes/index.ts
 router.use('/maintenance-requests', (req, res, next) => {
   // Redirect to the route in roomRoutes
