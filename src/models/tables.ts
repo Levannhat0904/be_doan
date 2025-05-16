@@ -99,15 +99,6 @@ ALTER TABLE rooms ADD COLUMN roomArea FLOAT;
 
 -- Thêm cột notes (ghi chú) vào bảng rooms
 ALTER TABLE rooms ADD COLUMN notes TEXT;
-    -- Thêm vào file tables.ts
-CREATE TABLE IF NOT EXISTS room_images (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    roomId INT NOT NULL,
-    imagePath VARCHAR(255) NOT NULL,
-    isMain BOOLEAN DEFAULT false,
-    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
     -- 5. CONTRACTS & BILLING
     CREATE TABLE IF NOT EXISTS contracts (

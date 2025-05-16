@@ -4,6 +4,8 @@ import fs from 'fs';
 import pool from '../config/database';
 import { RowDataPacket, OkPacket } from 'mysql2';
 import activityLogService from '../services/activityLogService';
+import FilesService from '../services/FilesService';
+import path from 'path';
 
 interface CreateStudentRequest {
   email: string;
@@ -25,7 +27,7 @@ interface CreateStudentRequest {
 export class StudentController {
   createStudent: RequestHandler = async (req, res) => {
     try {
-      // Lấy data từ form-data
+      // Prepare data without avatar first
       const data: CreateStudentRequest = {
         email: req.body.email,
         studentCode: req.body.studentCode,
@@ -39,8 +41,7 @@ export class StudentController {
         address: req.body.address,
         faculty: req.body.faculty,
         major: req.body.major,
-        className: req.body.className,
-        ...(req.file && { avatarPath: `/uploads/students/${req.file.filename}` })
+        className: req.body.className
       };
 
       // Validate required fields
@@ -79,9 +80,55 @@ export class StudentController {
         return;
       }
 
-      // Validate và tạo sinh viên
+      // Create student first without avatar
+      let userResult;
+      let studentId;
+      let avatarPath;
+      let avatarUrl;
+
       try {
-        const result = await StudentService.createStudent(data);
+        // First create student without avatar
+        userResult = await StudentService.createStudent(data);
+
+        // Get the student ID from the user ID
+        const [studentResult] = await pool.query<RowDataPacket[]>(
+          'SELECT id FROM students WHERE userId = ?',
+          [userResult.id]
+        );
+
+        if (studentResult.length === 0) {
+          throw new Error('Failed to retrieve student ID after creation');
+        }
+
+        studentId = studentResult[0].id;
+
+        // If student creation is successful and there's a file, upload it
+        if (req.file) {
+          try {
+            const buffer = req.file.buffer || fs.readFileSync(req.file.path);
+            const filename = req.file.originalname;
+
+            // Upload the file to cloud storage
+            avatarPath = await FilesService.singleUpload(buffer, filename, 'students', true);
+
+            // Get the signed URL for the uploaded file
+            avatarUrl = await FilesService.getSignedUrl(avatarPath, true);
+
+            // Clean up local file if it exists
+            if (req.file.path && fs.existsSync(req.file.path)) {
+              fs.unlinkSync(req.file.path);
+            }
+
+            // Update the student with the avatar path and URL
+            await pool.query(
+              'UPDATE students SET avatarPath = ? WHERE id = ?',
+              [avatarUrl, studentId]
+            );
+          } catch (error) {
+            console.error('Error uploading avatar:', error);
+            // Continue with the process even if avatar upload fails
+          }
+        }
 
         // Log activity
         if (req.user?.id) {
@@ -89,7 +136,7 @@ export class StudentController {
             req.user.id,
             'create',
             'student',
-            result.id,
+            studentId,
             `Created student: ${data.fullName} (${data.studentCode})`,
             req
           );
@@ -98,16 +145,14 @@ export class StudentController {
         res.status(201).json({
           success: true,
           message: 'Đăng ký thành công, vui lòng chờ admin phê duyệt',
-          data: result
+          data: {
+            ...userResult,
+            studentId,
+            ...(avatarPath && { avatarPath }),
+            ...(avatarUrl && { avatarUrl })
+          }
         });
       } catch (error) {
-        // Nếu tạo sinh viên thất bại, xóa file ảnh đã upload (nếu có)
-        if (req.file) {
-          const filePath = `uploads/students/${req.file.filename}`;
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
-        }
         throw error;
       }
 
@@ -513,83 +558,198 @@ export class StudentController {
   }
 
   updateStudentProfile: RequestHandler = async (req, res) => {
+    // Bắt đầu transaction
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
     try {
       const { id } = req.params;
-      const studentId = Number(id);
+      const userId = Number(id);
 
-      // Kiểm tra quyền - chỉ admin hoặc chính sinh viên đó có thể cập nhật
-      const isAdmin = req.user?.userType === 'admin';
-      const isOwnProfile = req.user?.id === studentId;
+      // Lấy thông tin sinh viên hiện tại bằng userId
+      const [currentStudent] = await connection.query<RowDataPacket[]>(
+        'SELECT * FROM students WHERE userId = ?',
+        [userId]
+      );
 
-      if (!isAdmin && !isOwnProfile) {
-        res.status(403).json({
-          success: false,
-          message: 'Bạn không có quyền cập nhật thông tin này'
-        });
-        return;
+      if (!currentStudent.length) {
+        throw new Error('Không tìm thấy thông tin sinh viên');
       }
 
-      // Tạo object chứa dữ liệu cần cập nhật
-      const updateData: any = {};
+      const studentId = currentStudent[0].id;
 
-      // Các trường có thể cập nhật
+      // Kiểm tra email và số điện thoại trùng lặp (loại trừ sinh viên hiện tại)
+      if (req.body.email) {
+        const [existingEmail] = await connection.query<RowDataPacket[]>(
+          'SELECT id FROM students WHERE email = ? AND id != ?',
+          [req.body.email, studentId]
+        );
+        if (existingEmail.length > 0) {
+          await connection.rollback();
+          res.status(400).json({
+            success: false,
+            message: 'Email đã được sử dụng',
+            field: 'email'
+          });
+          return;
+        }
+      }
+
+      if (req.body.phone) {
+        const [existingPhone] = await connection.query<RowDataPacket[]>(
+          'SELECT id FROM students WHERE phone = ? AND id != ?',
+          [req.body.phone, studentId]
+        );
+        if (existingPhone.length > 0) {
+          await connection.rollback();
+          res.status(400).json({
+            success: false,
+            message: 'Số điện thoại đã được sử dụng',
+            field: 'phone'
+          });
+          return;
+        }
+      }
+
+      // Cập nhật thông tin cơ bản
+      const updateData: any = {};
       const allowedFields = [
         'fullName', 'birthDate', 'gender', 'phone',
         'province', 'district', 'ward', 'address',
         'faculty', 'major', 'className', 'email'
       ];
 
-      // Thêm các trường từ request body vào updateData
       allowedFields.forEach(field => {
         if (req.body[field] !== undefined) {
           updateData[field] = req.body[field];
         }
       });
 
-      // Xử lý file ảnh đại diện nếu có
+      // Nếu có file avatar mới
       if (req.file) {
-        updateData.avatarPath = `/uploads/students/${req.file.filename}`;
-
-        // Lấy thông tin sinh viên để xóa ảnh cũ nếu có
-        const student = await StudentService.getStudentById(studentId);
-        if (student.avatarPath) {
-          const oldPath = `uploads/${student.avatarPath.split('/uploads/')[1]}`;
-          if (fs.existsSync(oldPath)) {
-            fs.unlinkSync(oldPath);
+        try {
+          // Kiểm tra kích thước file (giới hạn 5MB)
+          const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+          if (req.file.size > MAX_FILE_SIZE) {
+            throw new Error('Kích thước file không được vượt quá 5MB');
           }
+
+          console.log('File info:', {
+            originalname: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            hasBuffer: !!req.file.buffer,
+            path: req.file.path
+          });
+
+          // Kiểm tra mime type
+          if (!req.file.mimetype.startsWith('image/')) {
+            throw new Error('File phải là hình ảnh');
+          }
+
+          const buffer = req.file.buffer || fs.readFileSync(req.file.path);
+
+          // Tạo tên file với format chuẩn
+          const timestamp = Date.now();
+          const ext = path.extname(req.file.originalname);
+          const filename = `student-${studentId}-${timestamp}${ext}`;
+
+          console.log('Preparing to upload:', {
+            filename,
+            bufferSize: buffer.length
+          });
+
+          // Upload với timeout 30 giây
+          const avatarPath = await FilesService.singleUpload(buffer, filename, 'students', true);
+
+          const newAvatarPath = await FilesService.getSignedUrl(avatarPath, true);
+          console.log('Upload result - newAvatarPath:', newAvatarPath);
+
+          // Kiểm tra và xóa avatar cũ
+          if (newAvatarPath && currentStudent[0].avatarPath) {
+            console.log('Current avatar path:', currentStudent[0].avatarPath);
+            const deleteResult = await FilesService.deleteFile(currentStudent[0].avatarPath);
+            console.log('Delete old avatar result:', deleteResult);
+          }
+
+          // Cập nhật đường dẫn avatar mới
+          updateData.avatarPath = newAvatarPath;
+
+          // Xóa file local nếu tồn tại
+          if (req.file.path && fs.existsSync(req.file.path)) {
+            console.log('Cleaning up local file:', req.file.path);
+            fs.unlinkSync(req.file.path);
+          }
+        } catch (uploadError: any) {
+          console.error('Error details during avatar handling:', uploadError);
+
+          // Xóa file local nếu có lỗi
+          if (req.file.path && fs.existsSync(req.file.path)) {
+            console.log('Cleaning up local file after error:', req.file.path);
+            fs.unlinkSync(req.file.path);
+          }
+
+          throw new Error(`Lỗi khi xử lý avatar: ${uploadError.message}`);
         }
       }
 
-      // Cập nhật thông tin sinh viên trong database
-      await pool.query(`
-        UPDATE students
-        SET ?
-        WHERE id = ?
-      `, [updateData, studentId]);
+      // Thực hiện cập nhật nếu có dữ liệu
+      if (Object.keys(updateData).length > 0) {
+        await connection.query(
+          'UPDATE students SET ? WHERE id = ?',
+          [updateData, studentId]
+        );
+      }
 
-      // Log activity
+      // Lấy thông tin sinh viên sau khi cập nhật
+      const [updatedStudent] = await connection.query<RowDataPacket[]>(
+        'SELECT * FROM students WHERE id = ?',
+        [studentId]
+      );
+
+      // Ghi log hoạt động
       if (req.user?.id) {
         await activityLogService.logActivity(
           req.user.id,
           'update',
           'student',
           studentId,
-          `Updated student profile: ${updateData.fullName || ''}`,
+          `Updated student profile: ${updateData.fullName || currentStudent[0].fullName}`,
           req
         );
       }
 
+      // Commit transaction
+      await connection.commit();
+
+      // Tạo signed URL cho avatar nếu có
+      let response = { ...updatedStudent[0] };
+      if (response.avatarPath) {
+        try {
+          response.avatarUrl = await FilesService.getSignedUrl(response.avatarPath, true);
+        } catch (urlError) {
+          console.error('Lỗi khi tạo signed URL:', urlError);
+        }
+      }
+
       res.json({
         success: true,
-        message: 'Cập nhật thông tin sinh viên thành công'
+        message: 'Cập nhật thông tin sinh viên thành công',
+        data: response
       });
 
     } catch (error) {
+      // Rollback nếu có lỗi
+      await connection.rollback();
+
       console.error('Error updating student profile:', error);
       res.status(400).json({
         success: false,
         message: error instanceof Error ? error.message : 'Lỗi cập nhật thông tin sinh viên'
       });
+    } finally {
+      // Luôn release connection
+      connection.release();
     }
   };
 
