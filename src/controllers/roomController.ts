@@ -4,6 +4,8 @@ import { RowDataPacket, OkPacket } from 'mysql2';
 import fs from 'fs';
 import { Room, RoomFilters, RoomResponse } from '../types/room/room';
 import activityLogService from '../services/activityLogService';
+import path from 'path';
+import FilesService from '../services/FilesService';
 // Add this type at the top
 type QueryResult = RowDataPacket[];
 
@@ -746,7 +748,14 @@ export const updateRoomStatus = async (req: Request, res: Response) => {
 // Add Maintenance
 export const addMaintenance = async (req: Request, res: Response) => {
   try {
-    const roomId = parseInt(req.params.roomId);
+    // Get roomId from either params or body
+    const roomId = parseInt(req.params.roomId || req.body.roomId);
+    console.log("Request data:", {
+      params: req.params,
+      body: req.body,
+      roomId,
+      files: req.files
+    });
 
     if (isNaN(roomId)) {
       return res.status(400).json({
@@ -790,23 +799,64 @@ export const addMaintenance = async (req: Request, res: Response) => {
     // Tạo requestNumber
     const requestNumber = `MR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-    // Insert new maintenance request - luôn đặt status = 'pending' vì là yêu cầu mới
+    // Xử lý upload nhiều ảnh
+    const uploadedImages: string[] = [];
+    if (req.files && Array.isArray(req.files)) {
+      for (const file of req.files) {
+        try {
+          // Kiểm tra kích thước file (giới hạn 5MB)
+          const MAX_FILE_SIZE = 5 * 1024 * 1024;
+          if (file.size > MAX_FILE_SIZE) {
+            throw new Error('Kích thước file không được vượt quá 5MB');
+          }
+
+          // Kiểm tra mime type
+          if (!file.mimetype.startsWith('image/')) {
+            throw new Error('File phải là hình ảnh');
+          }
+
+          const buffer = file.buffer || fs.readFileSync(file.path);
+          const timestamp = Date.now();
+          const ext = path.extname(file.originalname);
+          const filename = `maintenance-${roomId}-${timestamp}${ext}`;
+
+          // Upload ảnh
+          const imagePath = await FilesService.singleUpload(buffer, filename, 'maintenance', true);
+          const imageUrl = await FilesService.getSignedUrl(imagePath, true);
+
+          uploadedImages.push(imageUrl);
+
+          // Xóa file tạm nếu có
+          if (file.path && fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+        } catch (uploadError) {
+          console.error('Error uploading image:', uploadError);
+          // Tiếp tục với file tiếp theo nếu có lỗi với file hiện tại
+        }
+      }
+    }
+
+    // Insert new maintenance request với imagePaths
     const [result] = await pool.query<OkPacket>(
       `INSERT INTO maintenance_requests (
         roomId, requestNumber, studentId, requestType, description, priority, status, 
-        createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        createdAt, imagePaths
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         roomId,
         requestNumber,
-        studentId || null, // ID của sinh viên yêu cầu, có thể null nếu admin tạo
+        studentId || null,
         requestType,
         description,
-        'normal', // Mức ưu tiên mặc định
-        'pending', // Luôn đặt trạng thái là pending cho yêu cầu mới
-        new Date()
+        'normal',
+        'pending',
+        new Date(),
+        JSON.stringify(uploadedImages) // Lưu vào trường imagePaths
       ]
     );
+
+    const maintenanceId = result.insertId;
 
     // Log activity
     if (req.user?.id) {
@@ -814,12 +864,11 @@ export const addMaintenance = async (req: Request, res: Response) => {
         req.user.id,
         'create',
         'maintenance',
-        result.insertId,
+        maintenanceId,
         `Tạo yêu cầu bảo trì cho Phòng ${roomNumber} tại tòa nhà ${buildingName}: ${requestType}`,
         req
       );
 
-      // Add log for room entity to ensure it appears in room timeline
       await activityLogService.logActivity(
         req.user.id,
         'create',
@@ -834,14 +883,15 @@ export const addMaintenance = async (req: Request, res: Response) => {
       success: true,
       message: 'Thêm yêu cầu bảo trì thành công',
       data: {
-        id: result.insertId,
+        id: maintenanceId,
         requestNumber,
         roomId,
         studentId: studentId || null,
         requestType,
         description,
         status: 'pending',
-        createdAt: new Date()
+        createdAt: new Date(),
+        imagePaths: uploadedImages // Trả về với tên trường imagePaths
       }
     });
 
@@ -1373,6 +1423,7 @@ export const getRoomMaintenanceRequests = async (req: Request, res: Response) =>
         mr.id, mr.requestNumber, mr.roomId, mr.studentId,
         mr.requestType, mr.description, mr.priority, mr.status,
         mr.createdAt, mr.resolvedAt, mr.resolutionNote,
+        mr.imagePaths,
         r.roomNumber, b.name as buildingName,
         s.fullName as studentName, s.studentCode
       FROM maintenance_requests mr
@@ -1392,21 +1443,51 @@ export const getRoomMaintenanceRequests = async (req: Request, res: Response) =>
       });
     }
 
-    // Skip the image fetching since the table might not exist
-    const requestsWithImages = requests.map(request => ({
-      ...request,
-      imagePaths: [],
-    }));
+    // Parse imagePaths từ JSON string thành array với xử lý lỗi cẩn thận hơn
+    const requestsWithImages = requests.map(request => {
+      try {
+        console.log('Raw imagePaths:', request.imagePaths); // Log để debug
+        let parsedImagePaths = [];
+        
+        if (request.imagePaths) {
+          // Kiểm tra nếu đã là array thì không cần parse
+          if (Array.isArray(request.imagePaths)) {
+            parsedImagePaths = request.imagePaths;
+          } else {
+            try {
+              parsedImagePaths = JSON.parse(request.imagePaths);
+            } catch (parseError) {
+              console.error('Error parsing imagePaths:', parseError);
+              // Nếu là string đơn, wrap nó trong array
+              parsedImagePaths = [request.imagePaths];
+            }
+          }
+        }
+
+        return {
+          ...request,
+          imagePaths: parsedImagePaths
+        };
+      } catch (error) {
+        console.error('Error processing request:', error);
+        return {
+          ...request,
+          imagePaths: []
+        };
+      }
+    });
 
     return res.status(200).json({
       success: true,
       data: requestsWithImages
     });
+
   } catch (error) {
     console.error('Error fetching room maintenance requests:', error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi lấy danh sách yêu cầu bảo trì'
+      message: 'Lỗi khi lấy danh sách yêu cầu bảo trì',
+      error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 };
@@ -1423,9 +1504,13 @@ export const cancelMaintenanceRequest = async (req: Request, res: Response) => {
       });
     }
 
-    // Get request info to check permissions
+    // Get request info to check permissions and status
     const [requestInfo] = await pool.query<RowDataPacket[]>(
-      'SELECT studentId, status FROM maintenance_requests WHERE id = ?',
+      `SELECT mr.*, r.roomNumber, b.name as buildingName 
+       FROM maintenance_requests mr
+       JOIN rooms r ON mr.roomId = r.id
+       JOIN buildings b ON r.buildingId = b.id
+       WHERE mr.id = ?`,
       [requestId]
     );
 
@@ -1433,17 +1518,6 @@ export const cancelMaintenanceRequest = async (req: Request, res: Response) => {
       return res.status(404).json({
         success: false,
         message: 'Không tìm thấy yêu cầu bảo trì'
-      });
-    }
-
-    // Check if user has permission (admin or the student who created the request)
-    const isAdmin = req.user?.userType === 'admin';
-    const isOwnRequest = req.user?.id === requestInfo[0].studentId;
-
-    if (!isAdmin && !isOwnRequest) {
-      return res.status(403).json({
-        success: false,
-        message: 'Bạn không có quyền hủy yêu cầu này'
       });
     }
 
@@ -1461,13 +1535,15 @@ export const cancelMaintenanceRequest = async (req: Request, res: Response) => {
       [requestId]
     );
 
-    // Log the activity
+    // Log activity
     if (req.user?.id) {
-      await pool.query(
-        `INSERT INTO activity_logs 
-         (userId, action, entityType, entityId, description)
-         VALUES (?, 'cancel', 'maintenance_request', ?, 'Hủy yêu cầu bảo trì')`,
-        [req.user.id, requestId]
+      await activityLogService.logActivity(
+        req.user.id,
+        'cancel',
+        'maintenance',
+        requestId,
+        `Hủy yêu cầu bảo trì cho Phòng ${requestInfo[0].roomNumber} tại tòa nhà ${requestInfo[0].buildingName}`,
+        req
       );
     }
 

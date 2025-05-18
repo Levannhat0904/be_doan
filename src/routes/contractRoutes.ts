@@ -50,4 +50,9 @@ router.delete('/:contractId', authMiddleware, isAdmin, (req, res, next) => {
   ContractController.deleteContract(req, res).catch(next);
 });
 
+// Get contract timeline
+router.get('/:contractId/timeline', authMiddleware, (req, res, next) => {
+  ContractController.getContractTimeline(req, res).catch(next);
+});
+
 export default router;

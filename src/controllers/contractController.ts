@@ -162,7 +162,7 @@ export const createContract = async (req: Request, res: Response) => {
         depositAmount,
         monthlyFee,
         'active',
-        createdBy
+        req.user?.id
       ]
     );
 
@@ -798,6 +798,77 @@ export const deleteContract = async (req: Request, res: Response) => {
       success: false,
       message: 'Lỗi khi xóa hợp đồng',
       error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Get contract timeline history
+ * This function retrieves all activity logs related to a specific contract
+ */
+export const getContractTimeline = async (req: Request, res: Response) => {
+  try {
+    const { contractId } = req.params;
+
+    if (!contractId || isNaN(Number(contractId))) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID hợp đồng không hợp lệ'
+      });
+    }
+
+    // Main query to get all activity logs related to the contract
+    const timelineQuery = `
+      SELECT 
+        al.id,
+        al.action,
+        al.entityType,
+        al.entityId,
+        al.description,
+        al.createdAt as timestamp,
+        CASE 
+          WHEN u.userType = 'admin' THEN a.fullName
+          WHEN u.userType = 'student' THEN s.fullName
+          ELSE 'System'
+        END as userName,
+        u.userType,
+        a.avatarPath as adminAvatar,
+        s.avatarPath as studentAvatar
+      FROM activity_logs al
+      LEFT JOIN users u ON al.userId = u.id
+      LEFT JOIN admins a ON u.id = a.userId AND u.userType = 'admin'
+      LEFT JOIN students s ON u.id = s.userId AND u.userType = 'student'
+      WHERE 
+        (al.entityType = 'contract' AND al.entityId = ?)
+      ORDER BY al.createdAt DESC
+    `;
+
+    // Execute the query with parameters
+    const [timelineRows] = await pool.query<RowDataPacket[]>(timelineQuery, [contractId]);
+
+    // Format the timeline data
+    const timeline = (timelineRows as RowDataPacket[]).map((row) => ({
+      id: row.id,
+      action: row.action,
+      entityType: row.entityType,
+      entityId: row.entityId,
+      description: row.description,
+      timestamp: row.timestamp,
+      userName: row.userName,
+      userType: row.userType,
+      userAvatar: row.userType === 'admin' ? row.adminAvatar : row.studentAvatar
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: timeline
+    });
+  } catch (error: any) {
+    console.error('Error fetching contract timeline:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi tải lịch sử hoạt động',
+      error: error.message
     });
   }
 };

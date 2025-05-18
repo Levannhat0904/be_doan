@@ -151,7 +151,7 @@ ALTER TABLE rooms ADD COLUMN notes TEXT;
         description TEXT NOT NULL,
         imagePaths TEXT,
         priority ENUM('low', 'normal', 'high', 'urgent') DEFAULT 'normal',
-        status ENUM('pending', 'processing', 'completed', 'rejected') DEFAULT 'pending',
+        status ENUM('pending', 'processing', 'completed', 'rejected', 'canceled') DEFAULT 'pending',
         assignedTo INT,
         resolvedAt TIMESTAMP NULL,
         resolutionNote TEXT,
