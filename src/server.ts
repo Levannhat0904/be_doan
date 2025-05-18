@@ -85,9 +85,19 @@ app.post('/init-db', async (req, res) => {
   }
 });
 
+
 // Error handling middleware
 app.use(errorHandler);
-
+// test sendEmail
+app.get('/test-send-email', async (req, res) => {
+  try {
+    const result = await sendEmail();
+    res.json({ message: 'Email sent successfully', data: result });
+  } catch (error) {
+    logger.error('Email sending failed:', error);
+    res.status(500).json({ error: 'Failed to send email' });
+  }
+});
 
 // Start server
 app.listen(PORT, () => {

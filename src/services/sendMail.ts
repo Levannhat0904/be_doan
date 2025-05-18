@@ -3,9 +3,9 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const MAILJET_API_KEY = process.env.MAILJET_API_KEY || "8f0d160672ad22e69ded697d0838ec37";
-const MAILJET_SECRET_KEY = process.env.MAILJET_SECRET_KEY || "d2e242908ae1eb4b5f6cb2cd38c15e56";
-const SENDER_EMAIL = process.env.SENDER_EMAIL || 'mztony86@gmail.com';
+const MAILJET_API_KEY = process.env.MAILJET_API_KEY || "9042a229e0ddd02287af329cab057bc8";
+const MAILJET_SECRET_KEY = process.env.MAILJET_SECRET_KEY || "efb4a7562af891303c7d2bb8dde79c7a";
+const SENDER_EMAIL = process.env.SENDER_EMAIL || 'jrnathanle@gmail.com';
 const SENDER_NAME = process.env.SENDER_NAME || 'Quan ly KTX';
 
 const mailjet = Mailjet.apiConnect(MAILJET_API_KEY, MAILJET_SECRET_KEY);
