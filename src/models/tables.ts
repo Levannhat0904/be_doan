@@ -132,7 +132,7 @@ ALTER TABLE rooms ADD COLUMN notes TEXT;
         waterFee DECIMAL(10,2) DEFAULT 0,
         serviceFee DECIMAL(10,2) DEFAULT 0,
         totalAmount DECIMAL(10,2) NOT NULL,
-        paymentStatus ENUM('pending', 'paid', 'overdue') DEFAULT 'pending',
+        paymentStatus ENUM('pending', 'paid', 'overdue', 'waiting_for_approval') DEFAULT 'pending',
         paymentDate TIMESTAMP NULL,
         paymentMethod VARCHAR(50),
         createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
