@@ -98,4 +98,13 @@ router.get(
   }
 );
 
+// Student payment route - requires authentication but not admin
+router.post(
+  '/invoices/:invoiceId/payment',
+  authMiddleware,
+  (req, res, next) => {
+    InvoiceController.submitInvoicePayment(req, res).catch(next);
+  }
+);
+
 export default router;

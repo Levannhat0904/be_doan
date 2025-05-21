@@ -461,8 +461,8 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
     const { invoiceId } = req.params;
     const { status } = req.body;
 
-    // Validate status
-    if (!status || !['pending', 'paid', 'overdue'].includes(status)) {
+    // Validate status (Now includes waiting_for_approval)
+    if (!status || !['pending', 'paid', 'overdue', 'waiting_for_approval'].includes(status)) {
       return res.status(400).json({
         success: false,
         message: 'Trạng thái không hợp lệ'
@@ -1071,6 +1071,96 @@ export const getRoomNumbers = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: 'Lỗi khi truy vấn danh sách phòng',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// Student payment API
+export const submitInvoicePayment = async (req: Request, res: Response) => {
+  try {
+    const { invoiceId } = req.params;
+    const { paymentMethod } = req.body;
+
+    // Validate
+    if (!paymentMethod) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng chọn phương thức thanh toán'
+      });
+    }
+
+    // Get current invoice details
+    const [currentInvoice] = await pool.query<RowDataPacket[]>(
+      `SELECT i.*, r.roomNumber, b.name as buildingName, s.fullName, s.studentCode
+       FROM invoices i
+       JOIN rooms r ON i.roomId = r.id
+       JOIN buildings b ON r.buildingId = b.id
+       LEFT JOIN students s ON i.studentId = s.id
+       WHERE i.id = ?`,
+      [invoiceId]
+    );
+
+    if (currentInvoice.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy hóa đơn'
+      });
+    }
+
+    const invoice = currentInvoice[0];
+
+    // Only allow payment for pending or overdue invoices
+    if (invoice.paymentStatus !== 'pending' && invoice.paymentStatus !== 'overdue') {
+      return res.status(400).json({
+        success: false,
+        message: `Không thể thanh toán hóa đơn với trạng thái ${invoice.paymentStatus}`
+      });
+    }
+
+    // Update invoice status to waiting_for_approval
+    const [result] = await pool.query<OkPacket>(
+      `UPDATE invoices 
+       SET paymentStatus = 'waiting_for_approval', paymentMethod = ?
+       WHERE id = ?`,
+      [paymentMethod, invoiceId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(500).json({
+        success: false,
+        message: 'Không thể cập nhật trạng thái hóa đơn'
+      });
+    }
+
+    // Log activity
+    if (req.user?.id) {
+      const activityDescription = `Sinh viên ${invoice.fullName || ''} (${invoice.studentCode || ''}) đã gửi yêu cầu thanh toán hóa đơn ${invoice.invoiceNumber} (Phòng: ${invoice.roomNumber}, Tòa nhà: ${invoice.buildingName})`;
+
+      await activityLogService.logActivity(
+        req.user.id,
+        'payment_submitted',
+        'invoice',
+        Number(invoiceId),
+        activityDescription,
+        req
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Gửi yêu cầu thanh toán thành công',
+      data: {
+        id: invoiceId,
+        status: 'waiting_for_approval',
+        paymentMethod
+      }
+    });
+  } catch (error) {
+    console.error('Error submitting invoice payment:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi gửi yêu cầu thanh toán',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
