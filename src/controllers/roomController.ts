@@ -207,7 +207,9 @@ export const getRoomDetail = async (req: Request, res: Response) => {
     // Get maintenance history
     const maintenanceQuery = `
       SELECT m.id, m.createdAt as date, m.requestType as type, m.description, 
-              0 as cost, IFNULL(a.fullName, 'Not assigned') as staff, m.status
+              0 as cost, IFNULL(a.fullName, 'Not assigned') as staff, m.status,
+              m.imagePaths, m.resolvedAt, m.resolutionNote, m.requestNumber,
+              m.priority
       FROM maintenance_requests m
       LEFT JOIN admins a ON m.assignedTo = a.id
       WHERE m.roomId = ? AND m.status = 'completed'
@@ -217,21 +219,43 @@ export const getRoomDetail = async (req: Request, res: Response) => {
 
     const [maintenanceRows] = await pool.query<RowDataPacket[]>(maintenanceQuery, [roomId]);
 
-    const maintenanceHistory = maintenanceRows.map((maintenance) => ({
-      id: maintenance.id,
-      date: maintenance.date,
-      type: maintenance.type,
-      description: maintenance.description,
-      cost: maintenance.cost,
-      staff: maintenance.staff,
-      status: maintenance.status
-    }));
+    const maintenanceHistory = maintenanceRows.map((maintenance) => {
+      let images = [];
+      try {
+        if (maintenance.imagePaths) {
+          if (Array.isArray(maintenance.imagePaths)) {
+            images = maintenance.imagePaths;
+          } else {
+            images = JSON.parse(maintenance.imagePaths);
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing maintenance images:', error);
+        images = maintenance.imagePaths ? [maintenance.imagePaths] : [];
+      }
+
+      return {
+        id: maintenance.id,
+        requestNumber: maintenance.requestNumber,
+        date: maintenance.date,
+        type: maintenance.type,
+        description: maintenance.description,
+        cost: maintenance.cost,
+        staff: maintenance.staff,
+        status: maintenance.status,
+        priority: maintenance.priority,
+        resolvedAt: maintenance.resolvedAt,
+        resolutionNote: maintenance.resolutionNote,
+        images
+      };
+    });
 
     // Get pending requests
     const pendingRequestsQuery = `
       SELECT m.id, m.createdAt as date, m.requestType as type, m.description, 
              IFNULL(s.fullName, 'System') as requestedBy, 
-             m.status, m.priority
+             m.status, m.priority, m.imagePaths, m.resolvedAt, m.resolutionNote,
+             m.requestNumber
       FROM maintenance_requests m
       LEFT JOIN students s ON m.studentId = s.id
       WHERE m.roomId = ? AND m.status IN ('pending', 'processing')
@@ -248,15 +272,35 @@ export const getRoomDetail = async (req: Request, res: Response) => {
 
     const [pendingRows] = await pool.query<RowDataPacket[]>(pendingRequestsQuery, [roomId]);
 
-    const pendingRequests = pendingRows.map((request) => ({
-      id: request.id,
-      date: request.date,
-      type: request.type,
-      description: request.description,
-      requestedBy: request.requestedBy,
-      status: request.status,
-      priority: request.priority
-    }));
+    const pendingRequests = pendingRows.map((request) => {
+      let images = [];
+      try {
+        if (request.imagePaths) {
+          if (Array.isArray(request.imagePaths)) {
+            images = request.imagePaths;
+          } else {
+            images = JSON.parse(request.imagePaths);
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing request images:', error);
+        images = request.imagePaths ? [request.imagePaths] : [];
+      }
+
+      return {
+        id: request.id,
+        requestNumber: request.requestNumber,
+        date: request.date,
+        type: request.type,
+        description: request.description,
+        requestedBy: request.requestedBy,
+        status: request.status,
+        priority: request.priority,
+        resolvedAt: request.resolvedAt,
+        resolutionNote: request.resolutionNote,
+        images
+      };
+    });
 
     // Get utilities bills
     const utilitiesQuery = `
