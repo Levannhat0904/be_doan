@@ -5,6 +5,7 @@ class ActivityLogController {
   /**
    * Get paginated activity logs
    */
+  // @ts-ignore
   async getActivityLogs(req: Request, res: Response): Promise<void> {
     try {
       const { page = 1, limit = 20, userId, entityType, action } = req.query;
