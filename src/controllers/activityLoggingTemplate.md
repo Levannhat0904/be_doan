@@ -10,6 +10,7 @@ Add this import at the top of your controller file:
 import activityLogService from '../services/activityLogService';
 ```
 
+dllfk
 ## Step 2: Add logging to your controller actions
 
 ### For Create operations:
