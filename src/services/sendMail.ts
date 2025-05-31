@@ -10,7 +10,15 @@ const SENDER_NAME = process.env.SENDER_NAME || 'Quan ly KTX';
 
 const mailjet = Mailjet.apiConnect(MAILJET_API_KEY, MAILJET_SECRET_KEY);
 
-async function sendEmail() {
+async function sendEmail(
+  to: {
+    Email: string,
+    Name: string
+  },
+  subject: string,
+  text: string,
+  html: string
+) {
   try {
     const request = await mailjet
       .post('send', { version: 'v3.1' })
@@ -23,13 +31,13 @@ async function sendEmail() {
             },
             To: [
               {
-                Email: 'hiamnhatdz203@gmail.com',
-                Name: 'Nhat',
+                Email: to.Email,
+                Name: to.Name,
               },
             ],
-            Subject: 'Hello from Mailjet (TypeScript)',
-            TextPart: 'This is a plain text version of the message',
-            HTMLPart: '<h3>Hello, welcome to Mailjet!</h3><br />This is an HTML email.',
+            Subject: subject,
+            TextPart: text,
+            HTMLPart: html,
           },
         ],
       });

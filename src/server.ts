@@ -47,32 +47,32 @@ app.use('/api', routes);
 app.get('/', (req, res) => {
   res.json({ message: 'Dormitory Management System API' });
 });
-app.get('/send-email', async (req, res) => {
-  try {
-    const result = await sendEmail();
-    logger.info('Email sent successfully:', result);
-    res.json({
-      success: true,
-      message: 'Email sent successfully',
-      data: result
-    });
-  } catch (error: any) {
-    logger.error('Email sending failed:', {
-      statusCode: error.statusCode,
-      message: error.message,
-      response: error.response?.body
-    });
-    res.status(500).json({
-      success: false,
-      error: 'Failed to send email',
-      details: {
-        statusCode: error.statusCode,
-        message: error.message,
-        response: error.response?.body
-      }
-    });
-  }
-});
+// app.get('/send-email', async (req, res) => {
+//   try {
+//     const result = await sendEmail();
+//     logger.info('Email sent successfully:', result);
+//     res.json({
+//       success: true,
+//       message: 'Email sent successfully',
+//       data: result
+//     });
+//   } catch (error: any) {
+//     logger.error('Email sending failed:', {
+//       statusCode: error.statusCode,
+//       message: error.message,
+//       response: error.response?.body
+//     });
+//     res.status(500).json({
+//       success: false,
+//       error: 'Failed to send email',
+//       details: {
+//         statusCode: error.statusCode,
+//         message: error.message,
+//         response: error.response?.body
+//       }
+//     });
+//   }
+// });
 
 // Database initialization route (should be protected in production)
 app.post('/init-db', async (req, res) => {
@@ -90,8 +90,17 @@ app.post('/init-db', async (req, res) => {
 app.use(errorHandler);
 // test sendEmail
 app.get('/test-send-email', async (req, res) => {
+  const payload = {
+    to: {
+      Email: 'hiamnhatdz203@gmail.com',
+      Name: 'Nhat'
+    },
+    subject: 'Test email',
+    text: 'This is a test email',
+    html: '<h3>Hello, welcome to Mailjet!</h3><br />This is an HTML email.'
+  };
   try {
-    const result = await sendEmail();
+    const result = await sendEmail(payload.to, payload.subject, payload.text, payload.html);
     res.json({ message: 'Email sent successfully', data: result });
   } catch (error) {
     logger.error('Email sending failed:', error);
