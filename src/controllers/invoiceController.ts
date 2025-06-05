@@ -1,7 +1,7 @@
-import { Request, Response } from 'express';
-import pool from '../config/database';
-import { RowDataPacket, OkPacket } from 'mysql2';
-import activityLogService from '../services/activityLogService';
+import { Request, Response } from "express";
+import pool from "../config/database";
+import { RowDataPacket, OkPacket } from "mysql2";
+import activityLogService from "../services/activityLogService";
 
 export const getAllInvoices = async (req: Request, res: Response) => {
   try {
@@ -21,28 +21,36 @@ export const getAllInvoices = async (req: Request, res: Response) => {
     const queryParams: any[] = [];
 
     // Adding filters if provided
-    if (status && ['pending', 'paid', 'overdue'].includes(status)) {
-      conditions.push('i.paymentStatus = ?');
+    if (status && ["pending", "paid", "overdue"].includes(status)) {
+      conditions.push("i.paymentStatus = ?");
       queryParams.push(status);
     }
 
     if (buildingId && !isNaN(Number(buildingId))) {
-      conditions.push('r.buildingId = ?');
+      conditions.push("r.buildingId = ?");
       queryParams.push(Number(buildingId));
     }
 
     if (searchTerm) {
-      conditions.push('(i.invoiceNumber LIKE ? OR r.roomNumber LIKE ? OR s.fullName LIKE ? OR s.studentCode LIKE ?)');
+      conditions.push(
+        "(i.invoiceNumber LIKE ? OR r.roomNumber LIKE ? OR s.fullName LIKE ? OR s.studentCode LIKE ?)"
+      );
       const searchPattern = `%${searchTerm}%`;
-      queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern);
+      queryParams.push(
+        searchPattern,
+        searchPattern,
+        searchPattern,
+        searchPattern
+      );
     }
 
     if (startDate && endDate) {
-      conditions.push('(i.dueDate BETWEEN ? AND ?)');
+      conditions.push("(i.dueDate BETWEEN ? AND ?)");
       queryParams.push(startDate, endDate);
     }
 
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const whereClause =
+      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     // Count total invoices
     const [countRows] = await pool.query<RowDataPacket[]>(
@@ -76,7 +84,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
     );
 
     // Format invoices for response
-    const invoices = invoiceRows.map(invoice => ({
+    const invoices = invoiceRows.map((invoice) => ({
       id: invoice.id,
       invoiceNumber: invoice.invoiceNumber,
       roomId: invoice.roomId,
@@ -97,7 +105,7 @@ export const getAllInvoices = async (req: Request, res: Response) => {
       dueDate: invoice.dueDate,
       paymentStatus: invoice.paymentStatus,
       paymentDate: invoice.paymentDate,
-      paymentMethod: invoice.paymentMethod
+      paymentMethod: invoice.paymentMethod,
     }));
 
     return res.status(200).json({
@@ -108,16 +116,16 @@ export const getAllInvoices = async (req: Request, res: Response) => {
           total,
           page,
           limit,
-          totalPages: Math.ceil(total / limit)
-        }
-      }
+          totalPages: Math.ceil(total / limit),
+        },
+      },
     });
   } catch (error) {
-    console.error('Error fetching all invoices:', error);
+    console.error("Error fetching all invoices:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi truy vấn danh sách hóa đơn',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Lỗi khi truy vấn danh sách hóa đơn",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -130,7 +138,7 @@ export const getInvoiceById = async (req: Request, res: Response) => {
     if (!invoiceId || isNaN(Number(invoiceId))) {
       return res.status(400).json({
         success: false,
-        message: 'ID hóa đơn không hợp lệ'
+        message: "ID hóa đơn không hợp lệ",
       });
     }
 
@@ -154,7 +162,7 @@ export const getInvoiceById = async (req: Request, res: Response) => {
     if (invoiceRows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy hóa đơn'
+        message: "Không tìm thấy hóa đơn",
       });
     }
 
@@ -185,15 +193,15 @@ export const getInvoiceById = async (req: Request, res: Response) => {
         dueDate: invoice.dueDate,
         paymentStatus: invoice.paymentStatus,
         paymentDate: invoice.paymentDate,
-        paymentMethod: invoice.paymentMethod
-      }
+        paymentMethod: invoice.paymentMethod,
+      },
     });
   } catch (error) {
-    console.error('Error fetching invoice details:', error);
+    console.error("Error fetching invoice details:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi truy vấn chi tiết hóa đơn',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Lỗi khi truy vấn chi tiết hóa đơn",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -209,7 +217,7 @@ export const getInvoicesByRoom = async (req: Request, res: Response) => {
     if (!roomId || isNaN(Number(roomId))) {
       return res.status(400).json({
         success: false,
-        message: 'ID phòng không hợp lệ'
+        message: "ID phòng không hợp lệ",
       });
     }
 
@@ -225,7 +233,7 @@ export const getInvoicesByRoom = async (req: Request, res: Response) => {
     if (roomRows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy phòng'
+        message: "Không tìm thấy phòng",
       });
     }
 
@@ -252,10 +260,13 @@ export const getInvoicesByRoom = async (req: Request, res: Response) => {
     );
 
     // Format invoices
-    const invoices = invoiceRows.map(invoice => ({
+    const invoices = invoiceRows.map((invoice) => ({
       id: invoice.id,
       invoiceNumber: invoice.invoiceNumber,
-      month: new Date(invoice.invoiceMonth).toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' }),
+      month: new Date(invoice.invoiceMonth).toLocaleDateString("vi-VN", {
+        month: "2-digit",
+        year: "numeric",
+      }),
       electricity: Math.round(invoice.electricFee / 2000), // kWh
       water: Math.round(invoice.waterFee / 10000), // m3
       electricityCost: invoice.electricFee,
@@ -265,7 +276,7 @@ export const getInvoicesByRoom = async (req: Request, res: Response) => {
       totalCost: invoice.totalAmount,
       dueDate: invoice.dueDate,
       status: invoice.paymentStatus,
-      paidDate: invoice.paymentDate
+      paidDate: invoice.paymentDate,
     }));
 
     return res.status(200).json({
@@ -275,23 +286,23 @@ export const getInvoicesByRoom = async (req: Request, res: Response) => {
           id: room.id,
           roomNumber: room.roomNumber,
           buildingId: room.buildingId,
-          buildingName: room.buildingName
+          buildingName: room.buildingName,
         },
         invoices,
         pagination: {
           total,
           page,
           limit,
-          totalPages: Math.ceil(total / limit)
-        }
-      }
+          totalPages: Math.ceil(total / limit),
+        },
+      },
     });
   } catch (error) {
-    console.error('Error fetching invoices:', error);
+    console.error("Error fetching invoices:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi truy vấn hóa đơn',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Lỗi khi truy vấn hóa đơn",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -299,19 +310,13 @@ export const getInvoicesByRoom = async (req: Request, res: Response) => {
 export const createInvoice = async (req: Request, res: Response) => {
   try {
     const { roomId } = req.params;
-    const {
-      invoiceMonth,
-      electricity,
-      water,
-      serviceFee,
-      dueDate
-    } = req.body;
+    const { invoiceMonth, electricity, water, serviceFee, dueDate } = req.body;
 
     // Validate required fields
     if (!roomId || !invoiceMonth || !electricity || !water || !dueDate) {
       return res.status(400).json({
         success: false,
-        message: 'Vui lòng cung cấp đầy đủ thông tin'
+        message: "Vui lòng cung cấp đầy đủ thông tin",
       });
     }
 
@@ -327,7 +332,7 @@ export const createInvoice = async (req: Request, res: Response) => {
     if (roomRows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy phòng'
+        message: "Không tìm thấy phòng",
       });
     }
 
@@ -341,19 +346,25 @@ export const createInvoice = async (req: Request, res: Response) => {
     if (waterFee > 99999999.99) {
       return res.status(400).json({
         success: false,
-        message: 'Giá trị tiền nước vượt quá giới hạn. Vui lòng kiểm tra lại số nước.'
+        message:
+          "Giá trị tiền nước vượt quá giới hạn. Vui lòng kiểm tra lại số nước.",
       });
     }
 
     const serviceFeeFinal = Number(serviceFee) || 100000; // Default to 100,000 VND if not provided
     const roomFee = Number(room.pricePerMonth);
-    const totalAmount = Number(electricFee) + Number(waterFee) + Number(serviceFeeFinal) + Number(roomFee);
+    const totalAmount =
+      Number(electricFee) +
+      Number(waterFee) +
+      Number(serviceFeeFinal) +
+      Number(roomFee);
 
     // Kiểm tra giới hạn của cột DECIMAL(10,2)
     if (totalAmount > 99999999.99) {
       return res.status(400).json({
         success: false,
-        message: 'Tổng số tiền vượt quá giới hạn. Vui lòng kiểm tra lại các giá trị.'
+        message:
+          "Tổng số tiền vượt quá giới hạn. Vui lòng kiểm tra lại các giá trị.",
       });
     }
 
@@ -361,7 +372,11 @@ export const createInvoice = async (req: Request, res: Response) => {
     const invoiceDate = new Date(invoiceMonth);
 
     // Generate invoice number
-    const invoiceNumber = `INV-${room.buildingId}${room.roomNumber}-${invoiceDate.getFullYear()}${(invoiceDate.getMonth() + 1).toString().padStart(2, '0')}`;
+    const invoiceNumber = `INV-${room.buildingId}${
+      room.roomNumber
+    }-${invoiceDate.getFullYear()}${(invoiceDate.getMonth() + 1)
+      .toString()
+      .padStart(2, "0")}`;
 
     // Check if invoice already exists for this month
     const [existingInvoice] = await pool.query<RowDataPacket[]>(
@@ -373,7 +388,7 @@ export const createInvoice = async (req: Request, res: Response) => {
     if (existingInvoice.length > 0) {
       return res.status(400).json({
         success: false,
-        message: 'Hóa đơn cho tháng này đã tồn tại'
+        message: "Hóa đơn cho tháng này đã tồn tại",
       });
     }
 
@@ -393,7 +408,7 @@ export const createInvoice = async (req: Request, res: Response) => {
         waterFee,
         serviceFeeFinal,
         totalAmount,
-        'pending'
+        "pending",
       ]
     );
 
@@ -404,8 +419,8 @@ export const createInvoice = async (req: Request, res: Response) => {
       // Log to invoice entity
       await activityLogService.logActivity(
         req.user.id,
-        'create',
-        'invoice',
+        "create",
+        "invoice",
         result.insertId,
         activityDescription,
         req
@@ -414,8 +429,8 @@ export const createInvoice = async (req: Request, res: Response) => {
       // Log to room entity for room timeline
       await activityLogService.logActivity(
         req.user.id,
-        'create',
-        'room',
+        "create",
+        "room",
         Number(roomId),
         activityDescription,
         req
@@ -430,11 +445,14 @@ export const createInvoice = async (req: Request, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Tạo hóa đơn thành công',
+      message: "Tạo hóa đơn thành công",
       data: {
         id: result.insertId,
         invoiceNumber: invoiceNumber,
-        month: new Date(invoiceDate).toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' }),
+        month: new Date(invoiceDate).toLocaleDateString("vi-VN", {
+          month: "2-digit",
+          year: "numeric",
+        }),
         electricity: Number(electricity),
         water: Number(water),
         electricityCost: electricFee,
@@ -443,15 +461,15 @@ export const createInvoice = async (req: Request, res: Response) => {
         roomFee: roomFee,
         totalCost: totalAmount,
         dueDate: new Date(dueDate),
-        status: 'pending'
-      }
+        status: "pending",
+      },
     });
   } catch (error) {
-    console.error('Error creating invoice:', error);
+    console.error("Error creating invoice:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi tạo hóa đơn',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Lỗi khi tạo hóa đơn",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -462,10 +480,13 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
     const { status } = req.body;
 
     // Validate status (Now includes waiting_for_approval)
-    if (!status || !['pending', 'paid', 'overdue', 'waiting_for_approval'].includes(status)) {
+    if (
+      !status ||
+      !["pending", "paid", "overdue", "waiting_for_approval"].includes(status)
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Trạng thái không hợp lệ'
+        message: "Trạng thái không hợp lệ",
       });
     }
 
@@ -482,14 +503,14 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
     if (currentInvoice.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy hóa đơn'
+        message: "Không tìm thấy hóa đơn",
       });
     }
 
     const oldStatus = currentInvoice[0].paymentStatus;
 
     // Update invoice status
-    const paymentDate = status === 'paid' ? new Date() : null;
+    const paymentDate = status === "paid" ? new Date() : null;
     const [result] = await pool.query<OkPacket>(
       `UPDATE invoices 
        SET paymentStatus = ?, paymentDate = ?
@@ -500,7 +521,7 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
     if (result.affectedRows === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy hóa đơn'
+        message: "Không tìm thấy hóa đơn",
       });
     }
 
@@ -519,8 +540,8 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
       // Log to invoice entity
       await activityLogService.logActivity(
         req.user.id,
-        'status_change',
-        'invoice',
+        "status_change",
+        "invoice",
         Number(invoiceId),
         activityDescription,
         req
@@ -530,8 +551,8 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
       if (roomId) {
         await activityLogService.logActivity(
           req.user.id,
-          'status_change',
-          'room',
+          "status_change",
+          "room",
           roomId,
           activityDescription,
           req
@@ -541,19 +562,19 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Cập nhật trạng thái hóa đơn thành công',
+      message: "Cập nhật trạng thái hóa đơn thành công",
       data: {
         id: invoiceId,
         status,
-        paymentDate
-      }
+        paymentDate,
+      },
     });
   } catch (error) {
-    console.error('Error updating invoice status:', error);
+    console.error("Error updating invoice status:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi cập nhật trạng thái hóa đơn',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Lỗi khi cập nhật trạng thái hóa đơn",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -569,16 +590,21 @@ export const updateInvoice = async (req: Request, res: Response) => {
       waterFee,
       serviceFee,
       electricity,
-      water
+      water,
     } = req.body;
 
     // Validate input
-    if (!invoiceMonth || !dueDate || roomFee === undefined ||
-      electricFee === undefined || waterFee === undefined ||
-      serviceFee === undefined) {
+    if (
+      !invoiceMonth ||
+      !dueDate ||
+      roomFee === undefined ||
+      electricFee === undefined ||
+      waterFee === undefined ||
+      serviceFee === undefined
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Thiếu thông tin cần thiết cho hóa đơn'
+        message: "Thiếu thông tin cần thiết cho hóa đơn",
       });
     }
 
@@ -595,27 +621,31 @@ export const updateInvoice = async (req: Request, res: Response) => {
     if (currentInvoice.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy hóa đơn'
+        message: "Không tìm thấy hóa đơn",
       });
     }
 
     const invoice = currentInvoice[0];
 
     // Calculate total amount
-    const totalAmount = Number(roomFee) + Number(electricFee) + Number(waterFee) + Number(serviceFee);
+    const totalAmount =
+      Number(roomFee) +
+      Number(electricFee) +
+      Number(waterFee) +
+      Number(serviceFee);
 
     // Check if values exceed database column limits
     if (waterFee > 99999999.99) {
       return res.status(400).json({
         success: false,
-        message: 'Tiền nước vượt quá giới hạn cho phép'
+        message: "Tiền nước vượt quá giới hạn cho phép",
       });
     }
 
     if (totalAmount > 99999999.99) {
       return res.status(400).json({
         success: false,
-        message: 'Tổng tiền hóa đơn vượt quá giới hạn cho phép'
+        message: "Tổng tiền hóa đơn vượt quá giới hạn cho phép",
       });
     }
 
@@ -634,55 +664,80 @@ export const updateInvoice = async (req: Request, res: Response) => {
         waterFee,
         serviceFee,
         totalAmount,
-        invoiceId
+        invoiceId,
       ]
     );
 
     if (result.affectedRows === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy hóa đơn'
+        message: "Không tìm thấy hóa đơn",
       });
     }
 
     // Log activity
     if (req.user?.id) {
       // Format month for display
-      const invoiceMonthFormatted = new Date(invoiceMonth).toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' });
-      const oldInvoiceMonthFormatted = invoice.invoiceMonth ?
-        new Date(invoice.invoiceMonth).toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' }) : '-';
+      const invoiceMonthFormatted = new Date(invoiceMonth).toLocaleDateString(
+        "vi-VN",
+        { month: "2-digit", year: "numeric" }
+      );
+      const oldInvoiceMonthFormatted = invoice.invoiceMonth
+        ? new Date(invoice.invoiceMonth).toLocaleDateString("vi-VN", {
+            month: "2-digit",
+            year: "numeric",
+          })
+        : "-";
 
       // Create a detailed description of changes
       let description = `Cập nhật hóa đơn cho phòng ${invoice.roomNumber} tòa nhà ${invoice.buildingName}: `;
       const changes = [];
 
       if (invoiceMonthFormatted !== oldInvoiceMonthFormatted) {
-        changes.push(`Tháng: ${oldInvoiceMonthFormatted} → ${invoiceMonthFormatted}`);
+        changes.push(
+          `Tháng: ${oldInvoiceMonthFormatted} → ${invoiceMonthFormatted}`
+        );
       }
 
       if (Number(electricFee) !== Number(invoice.electricFee)) {
-        changes.push(`Phí điện: ${invoice.electricFee.toLocaleString('vi-VN')} → ${Number(electricFee).toLocaleString('vi-VN')} VNĐ`);
+        changes.push(
+          `Phí điện: ${Number(invoice.electricFee).toLocaleString(
+            "vi-VN"
+          )} → ${Number(electricFee).toLocaleString("vi-VN")} VNĐ`
+        );
       }
 
       if (Number(waterFee) !== Number(invoice.waterFee)) {
-        changes.push(`Phí nước: ${invoice.waterFee.toLocaleString('vi-VN')} → ${Number(waterFee).toLocaleString('vi-VN')} VNĐ`);
+        changes.push(
+          `Phí nước: ${Number(invoice.waterFee).toLocaleString(
+            "vi-VN"
+          )} → ${Number(waterFee).toLocaleString("vi-VN")} VNĐ`
+        );
       }
 
       if (Number(serviceFee) !== Number(invoice.serviceFee)) {
-        changes.push(`Phí dịch vụ: ${invoice.serviceFee.toLocaleString('vi-VN')} → ${Number(serviceFee).toLocaleString('vi-VN')} VNĐ`);
+        changes.push(
+          `Phí dịch vụ: ${Number(invoice.serviceFee).toLocaleString(
+            "vi-VN"
+          )} → ${Number(serviceFee).toLocaleString("vi-VN")} VNĐ`
+        );
       }
 
-      if (totalAmount !== Number(invoice.totalAmount)) {
-        changes.push(`Tổng cộng: ${invoice.totalAmount.toLocaleString('vi-VN')} → ${totalAmount.toLocaleString('vi-VN')} VNĐ`);
+      if (Number(totalAmount) !== Number(invoice.totalAmount)) {
+        changes.push(
+          `Tổng cộng: ${Number(invoice.totalAmount).toLocaleString(
+            "vi-VN"
+          )} → ${Number(totalAmount).toLocaleString("vi-VN")} VNĐ`
+        );
       }
 
-      description += changes.join(', ');
+      description += changes.join(", ");
 
       // Log to invoice entity
       await activityLogService.logActivity(
         req.user.id,
-        'update',
-        'invoice',
+        "update",
+        "invoice",
         Number(invoiceId),
         description,
         req
@@ -691,8 +746,8 @@ export const updateInvoice = async (req: Request, res: Response) => {
       // Log to room entity for room timeline
       await activityLogService.logActivity(
         req.user.id,
-        'update',
-        'room',
+        "update",
+        "room",
         invoice.roomId,
         description,
         req
@@ -707,15 +762,15 @@ export const updateInvoice = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Cập nhật hóa đơn thành công',
-      data: rows[0]
+      message: "Cập nhật hóa đơn thành công",
+      data: rows[0],
     });
   } catch (error) {
-    console.error('Error updating invoice:', error);
+    console.error("Error updating invoice:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi cập nhật hóa đơn',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Lỗi khi cập nhật hóa đơn",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -737,7 +792,7 @@ export const deleteInvoice = async (req: Request, res: Response) => {
     if (invoiceDetails.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy hóa đơn'
+        message: "Không tìm thấy hóa đơn",
       });
     }
 
@@ -752,7 +807,7 @@ export const deleteInvoice = async (req: Request, res: Response) => {
     if (result.affectedRows === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy hóa đơn'
+        message: "Không tìm thấy hóa đơn",
       });
     }
 
@@ -763,8 +818,8 @@ export const deleteInvoice = async (req: Request, res: Response) => {
       // Log to invoice entity
       await activityLogService.logActivity(
         req.user.id,
-        'delete',
-        'invoice',
+        "delete",
+        "invoice",
         Number(invoiceId),
         activityDescription,
         req
@@ -773,8 +828,8 @@ export const deleteInvoice = async (req: Request, res: Response) => {
       // Log to room entity for room timeline
       await activityLogService.logActivity(
         req.user.id,
-        'delete',
-        'room',
+        "delete",
+        "room",
         invoice.roomId,
         activityDescription,
         req
@@ -783,14 +838,14 @@ export const deleteInvoice = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Xóa hóa đơn thành công'
+      message: "Xóa hóa đơn thành công",
     });
   } catch (error) {
-    console.error('Error deleting invoice:', error);
+    console.error("Error deleting invoice:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi xóa hóa đơn',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Lỗi khi xóa hóa đơn",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -807,7 +862,8 @@ export const searchInvoices = async (req: Request, res: Response) => {
     if (!studentCode && !roomNumber && !month) {
       return res.status(400).json({
         success: false,
-        message: 'Vui lòng cung cấp ít nhất một điều kiện tìm kiếm (mã sinh viên, số phòng hoặc tháng)'
+        message:
+          "Vui lòng cung cấp ít nhất một điều kiện tìm kiếm (mã sinh viên, số phòng hoặc tháng)",
       });
     }
 
@@ -817,16 +873,16 @@ export const searchInvoices = async (req: Request, res: Response) => {
     const queryParams: any[] = [];
 
     if (roomNumber) {
-      conditions.push('r.roomNumber LIKE ?');
+      conditions.push("r.roomNumber LIKE ?");
       queryParams.push(`%${roomNumber}%`);
     }
 
     if (month) {
       // Parse month format MM/YYYY or YYYY-MM
       let parsedMonth;
-      if (typeof month === 'string') {
-        if (month.includes('/')) {
-          const [m, y] = month.split('/');
+      if (typeof month === "string") {
+        if (month.includes("/")) {
+          const [m, y] = month.split("/");
           parsedMonth = `${y}-${m}`;
         } else {
           parsedMonth = month;
@@ -837,12 +893,13 @@ export const searchInvoices = async (req: Request, res: Response) => {
     }
 
     if (studentCode) {
-      conditions.push('(s.studentCode LIKE ? OR s.studentCode IS NULL)');
+      conditions.push("(s.studentCode LIKE ? OR s.studentCode IS NULL)");
       queryParams.push(`%${studentCode}%`);
     }
 
     // Build the WHERE clause
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const whereClause =
+      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     // Count total invoices
     const [countRows] = await pool.query<RowDataPacket[]>(
@@ -860,16 +917,16 @@ export const searchInvoices = async (req: Request, res: Response) => {
     if (total === 0) {
       return res.status(200).json({
         success: true,
-        message: 'Không tìm thấy hóa đơn phù hợp với điều kiện tìm kiếm',
+        message: "Không tìm thấy hóa đơn phù hợp với điều kiện tìm kiếm",
         data: {
           invoices: [],
           pagination: {
             total: 0,
             page,
             limit,
-            totalPages: 0
-          }
-        }
+            totalPages: 0,
+          },
+        },
       });
     }
 
@@ -893,52 +950,80 @@ export const searchInvoices = async (req: Request, res: Response) => {
     );
 
     // Process each invoice to get room students if needed
-    const processedInvoices = await Promise.all(invoiceRows.map(async (invoice) => {
-      // If we already have a student associated with the invoice, just return the regular data
-      if (invoice.fullName && invoice.studentCode) {
-        return {
-          id: invoice.id,
-          invoiceNumber: invoice.invoiceNumber,
-          roomId: invoice.roomId,
-          roomNumber: invoice.roomNumber,
-          floorNumber: invoice.floorNumber,
-          buildingId: invoice.buildingId,
-          buildingName: invoice.buildingName,
-          fullName: invoice.fullName,
-          studentCode: invoice.studentCode,
-          invoiceMonth: invoice.invoiceMonth,
-          electricity: Math.round(invoice.electricFee / 2000), // kWh
-          water: Math.round(invoice.waterFee / 10000), // m3
-          electricFee: invoice.electricFee,
-          waterFee: invoice.waterFee,
-          serviceFee: invoice.serviceFee,
-          roomFee: invoice.roomFee,
-          totalAmount: invoice.totalAmount,
-          dueDate: invoice.dueDate,
-          paymentStatus: invoice.paymentStatus,
-          paymentDate: invoice.paymentDate,
-          paymentMethod: invoice.paymentMethod
-        };
-      }
+    const processedInvoices = await Promise.all(
+      invoiceRows.map(async (invoice) => {
+        // If we already have a student associated with the invoice, just return the regular data
+        if (invoice.fullName && invoice.studentCode) {
+          return {
+            id: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            roomId: invoice.roomId,
+            roomNumber: invoice.roomNumber,
+            floorNumber: invoice.floorNumber,
+            buildingId: invoice.buildingId,
+            buildingName: invoice.buildingName,
+            fullName: invoice.fullName,
+            studentCode: invoice.studentCode,
+            invoiceMonth: invoice.invoiceMonth,
+            electricity: Math.round(invoice.electricFee / 2000), // kWh
+            water: Math.round(invoice.waterFee / 10000), // m3
+            electricFee: invoice.electricFee,
+            waterFee: invoice.waterFee,
+            serviceFee: invoice.serviceFee,
+            roomFee: invoice.roomFee,
+            totalAmount: invoice.totalAmount,
+            dueDate: invoice.dueDate,
+            paymentStatus: invoice.paymentStatus,
+            paymentDate: invoice.paymentDate,
+            paymentMethod: invoice.paymentMethod,
+          };
+        }
 
-      // Get students in this room via active contracts
-      const [roomStudents] = await pool.query<RowDataPacket[]>(
-        `SELECT 
+        // Get students in this room via active contracts
+        const [roomStudents] = await pool.query<RowDataPacket[]>(
+          `SELECT 
            s.fullName, s.studentCode, s.id as studentId
          FROM contracts c
          JOIN students s ON c.studentId = s.id
          WHERE c.roomId = ? 
          AND c.status = 'active'
          AND (? BETWEEN c.startDate AND c.endDate OR c.startDate <= LAST_DAY(?))`,
-        [invoice.roomId, invoice.invoiceMonth, invoice.invoiceMonth]
-      );
+          [invoice.roomId, invoice.invoiceMonth, invoice.invoiceMonth]
+        );
 
-      // If we found students in the room
-      if (roomStudents.length > 0) {
-        const studentInfo = roomStudents.map(s =>
-          `${s.fullName} (${s.studentCode})`
-        ).join(', ');
+        // If we found students in the room
+        if (roomStudents.length > 0) {
+          const studentInfo = roomStudents
+            .map((s) => `${s.fullName} (${s.studentCode})`)
+            .join(", ");
 
+          return {
+            id: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            roomId: invoice.roomId,
+            roomNumber: invoice.roomNumber,
+            floorNumber: invoice.floorNumber,
+            buildingId: invoice.buildingId,
+            buildingName: invoice.buildingName,
+            fullName: studentInfo,
+            studentCode: null, // We're using fullName to store all student details
+            roomStudents: roomStudents,
+            invoiceMonth: invoice.invoiceMonth,
+            electricity: Math.round(invoice.electricFee / 2000), // kWh
+            water: Math.round(invoice.waterFee / 10000), // m3
+            electricFee: invoice.electricFee,
+            waterFee: invoice.waterFee,
+            serviceFee: invoice.serviceFee,
+            roomFee: invoice.roomFee,
+            totalAmount: invoice.totalAmount,
+            dueDate: invoice.dueDate,
+            paymentStatus: invoice.paymentStatus,
+            paymentDate: invoice.paymentDate,
+            paymentMethod: invoice.paymentMethod,
+          };
+        }
+
+        // If no students found, return original data
         return {
           id: invoice.id,
           invoiceNumber: invoice.invoiceNumber,
@@ -947,9 +1032,8 @@ export const searchInvoices = async (req: Request, res: Response) => {
           floorNumber: invoice.floorNumber,
           buildingId: invoice.buildingId,
           buildingName: invoice.buildingName,
-          fullName: studentInfo,
-          studentCode: null, // We're using fullName to store all student details
-          roomStudents: roomStudents,
+          fullName: null,
+          studentCode: null,
           invoiceMonth: invoice.invoiceMonth,
           electricity: Math.round(invoice.electricFee / 2000), // kWh
           water: Math.round(invoice.waterFee / 10000), // m3
@@ -961,35 +1045,10 @@ export const searchInvoices = async (req: Request, res: Response) => {
           dueDate: invoice.dueDate,
           paymentStatus: invoice.paymentStatus,
           paymentDate: invoice.paymentDate,
-          paymentMethod: invoice.paymentMethod
+          paymentMethod: invoice.paymentMethod,
         };
-      }
-
-      // If no students found, return original data
-      return {
-        id: invoice.id,
-        invoiceNumber: invoice.invoiceNumber,
-        roomId: invoice.roomId,
-        roomNumber: invoice.roomNumber,
-        floorNumber: invoice.floorNumber,
-        buildingId: invoice.buildingId,
-        buildingName: invoice.buildingName,
-        fullName: null,
-        studentCode: null,
-        invoiceMonth: invoice.invoiceMonth,
-        electricity: Math.round(invoice.electricFee / 2000), // kWh
-        water: Math.round(invoice.waterFee / 10000), // m3
-        electricFee: invoice.electricFee,
-        waterFee: invoice.waterFee,
-        serviceFee: invoice.serviceFee,
-        roomFee: invoice.roomFee,
-        totalAmount: invoice.totalAmount,
-        dueDate: invoice.dueDate,
-        paymentStatus: invoice.paymentStatus,
-        paymentDate: invoice.paymentDate,
-        paymentMethod: invoice.paymentMethod
-      };
-    }));
+      })
+    );
 
     return res.status(200).json({
       success: true,
@@ -999,16 +1058,16 @@ export const searchInvoices = async (req: Request, res: Response) => {
           total,
           page,
           limit,
-          totalPages: Math.ceil(total / limit)
-        }
-      }
+          totalPages: Math.ceil(total / limit),
+        },
+      },
     });
   } catch (error) {
-    console.error('Error searching invoices:', error);
+    console.error("Error searching invoices:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi tìm kiếm hóa đơn',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Lỗi khi tìm kiếm hóa đơn",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -1016,7 +1075,7 @@ export const searchInvoices = async (req: Request, res: Response) => {
 // Get all student codes for select component
 export const getStudentCodes = async (req: Request, res: Response) => {
   try {
-    const searchTerm = req.query.search as string || '';
+    const searchTerm = (req.query.search as string) || "";
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT id, studentCode, fullName 
        FROM students 
@@ -1028,18 +1087,18 @@ export const getStudentCodes = async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      data: rows.map(row => ({
+      data: rows.map((row) => ({
         value: row.studentCode,
         label: `${row.studentCode} - ${row.fullName}`,
-        id: row.id
-      }))
+        id: row.id,
+      })),
     });
   } catch (error) {
-    console.error('Error fetching student codes:', error);
+    console.error("Error fetching student codes:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi truy vấn danh sách mã sinh viên',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Lỗi khi truy vấn danh sách mã sinh viên",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -1047,7 +1106,7 @@ export const getStudentCodes = async (req: Request, res: Response) => {
 // Get all room numbers for select component
 export const getRoomNumbers = async (req: Request, res: Response) => {
   try {
-    const searchTerm = req.query.search as string || '';
+    const searchTerm = (req.query.search as string) || "";
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT r.id, r.roomNumber, b.name as buildingName 
        FROM rooms r
@@ -1060,18 +1119,18 @@ export const getRoomNumbers = async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      data: rows.map(row => ({
+      data: rows.map((row) => ({
         value: row.roomNumber,
         label: `${row.roomNumber} - Tòa ${row.buildingName}`,
-        id: row.id
-      }))
+        id: row.id,
+      })),
     });
   } catch (error) {
-    console.error('Error fetching room numbers:', error);
+    console.error("Error fetching room numbers:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi truy vấn danh sách phòng',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Lỗi khi truy vấn danh sách phòng",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -1086,7 +1145,7 @@ export const submitInvoicePayment = async (req: Request, res: Response) => {
     if (!paymentMethod) {
       return res.status(400).json({
         success: false,
-        message: 'Vui lòng chọn phương thức thanh toán'
+        message: "Vui lòng chọn phương thức thanh toán",
       });
     }
 
@@ -1104,17 +1163,20 @@ export const submitInvoicePayment = async (req: Request, res: Response) => {
     if (currentInvoice.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy hóa đơn'
+        message: "Không tìm thấy hóa đơn",
       });
     }
 
     const invoice = currentInvoice[0];
 
     // Only allow payment for pending or overdue invoices
-    if (invoice.paymentStatus !== 'pending' && invoice.paymentStatus !== 'overdue') {
+    if (
+      invoice.paymentStatus !== "pending" &&
+      invoice.paymentStatus !== "overdue"
+    ) {
       return res.status(400).json({
         success: false,
-        message: `Không thể thanh toán hóa đơn với trạng thái ${invoice.paymentStatus}`
+        message: `Không thể thanh toán hóa đơn với trạng thái ${invoice.paymentStatus}`,
       });
     }
 
@@ -1129,18 +1191,22 @@ export const submitInvoicePayment = async (req: Request, res: Response) => {
     if (result.affectedRows === 0) {
       return res.status(500).json({
         success: false,
-        message: 'Không thể cập nhật trạng thái hóa đơn'
+        message: "Không thể cập nhật trạng thái hóa đơn",
       });
     }
 
     // Log activity
     if (req.user?.id) {
-      const activityDescription = `Sinh viên ${invoice.fullName || ''} (${invoice.studentCode || ''}) đã gửi yêu cầu thanh toán hóa đơn ${invoice.invoiceNumber} (Phòng: ${invoice.roomNumber}, Tòa nhà: ${invoice.buildingName})`;
+      const activityDescription = `Sinh viên ${invoice.fullName || ""} (${
+        invoice.studentCode || ""
+      }) đã gửi yêu cầu thanh toán hóa đơn ${invoice.invoiceNumber} (Phòng: ${
+        invoice.roomNumber
+      }, Tòa nhà: ${invoice.buildingName})`;
 
       await activityLogService.logActivity(
         req.user.id,
-        'payment_submitted',
-        'invoice',
+        "payment_submitted",
+        "invoice",
         Number(invoiceId),
         activityDescription,
         req
@@ -1149,19 +1215,19 @@ export const submitInvoicePayment = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Gửi yêu cầu thanh toán thành công',
+      message: "Gửi yêu cầu thanh toán thành công",
       data: {
         id: invoiceId,
-        status: 'waiting_for_approval',
-        paymentMethod
-      }
+        status: "waiting_for_approval",
+        paymentMethod,
+      },
     });
   } catch (error) {
-    console.error('Error submitting invoice payment:', error);
+    console.error("Error submitting invoice payment:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi gửi yêu cầu thanh toán',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Lỗi khi gửi yêu cầu thanh toán",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
