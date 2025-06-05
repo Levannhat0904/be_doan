@@ -9,6 +9,7 @@ import invoiceRoutes from './invoiceRoutes';
 import dashboardRoutes from './dashboardRoutes';
 import contractRoutes from './contractRoutes';
 import activityLogRoutes from './activityLogRoutes';
+import sendmailRoutes from './sendmail';
 
 const router = express.Router();
 
@@ -23,4 +24,5 @@ router.use('/contracts', contractRoutes);
 router.use('/', invoiceRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/activity-logs', activityLogRoutes);
+router.use('/', sendmailRoutes);
 export default router; 

@@ -7,7 +7,7 @@ import logger from './utils/logger';
 import initializeDatabase from './scripts/initDb';
 import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
-import sendEmail from './services/sendMail';
+import { sendEmail } from './services/sendMail';
 
 dotenv.config();
 

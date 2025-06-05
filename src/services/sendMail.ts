@@ -10,7 +10,7 @@ const SENDER_NAME = process.env.SENDER_NAME || 'Quan ly KTX';
 
 const mailjet = Mailjet.apiConnect(MAILJET_API_KEY, MAILJET_SECRET_KEY);
 
-async function sendEmail(
+export const sendEmail = async (
   to: {
     Email: string,
     Name: string
@@ -18,7 +18,7 @@ async function sendEmail(
   subject: string,
   text: string,
   html: string
-) {
+) => {
   try {
     const request = await mailjet
       .post('send', { version: 'v3.1' })
@@ -56,6 +56,4 @@ async function sendEmail(
     });
     throw err; // Re-throw the error so it can be caught by the caller
   }
-}
-
-export default sendEmail;
+};
