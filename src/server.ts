@@ -1,13 +1,13 @@
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import path from 'path';
-import dotenv from 'dotenv';
-import logger from './utils/logger';
-import initializeDatabase from './scripts/initDb';
-import routes from './routes';
-import { errorHandler } from './middleware/errorHandler';
-import { sendEmail } from './services/sendMail';
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import path from "path";
+import dotenv from "dotenv";
+import logger from "./utils/logger";
+import initializeDatabase from "./scripts/initDb";
+import routes from "./routes";
+import { errorHandler } from "./middleware/errorHandler";
+import { sendEmail } from "./services/sendMail";
 
 dotenv.config();
 
@@ -15,24 +15,28 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Security middleware
-app.use(helmet({
-  contentSecurityPolicy: false, // Disable for development
-  crossOriginEmbedderPolicy: false, // Disable for development
-}));
-app.use(cors({
-  // origin: ['http://localhost:3001', 'http://localhost:3000', process.env.CORS_ORIGIN || '*', 'https://quan-ly-ktx-pqdlc5ijk-nhatles-projects-6a7533d6.vercel.app', "https://quan-ly-ktx-fe.vercel.app"],
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Disable for development
+    crossOriginEmbedderPolicy: false, // Disable for development
+  })
+);
+app.use(
+  cors({
+    // origin: ['http://localhost:3001', 'http://localhost:3000', process.env.CORS_ORIGIN || '*', 'https://quan-ly-ktx-pqdlc5ijk-nhatles-projects-6a7533d6.vercel.app', "https://quan-ly-ktx-fe.vercel.app"],
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  })
+);
 
 // Body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Serve static files - for uploaded images
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // Log routes for debugging
 app.use((req, res, next) => {
@@ -41,11 +45,11 @@ app.use((req, res, next) => {
 });
 
 // Routes
-app.use('/api', routes);
+app.use("/api", routes);
 
 // Basic route
-app.get('/', (req, res) => {
-  res.json({ message: 'Dormitory Management System API' });
+app.get("/", (req, res) => {
+  res.json({ message: "Dormitory Management System API" });
 });
 // app.get('/send-email', async (req, res) => {
 //   try {
@@ -75,36 +79,40 @@ app.get('/', (req, res) => {
 // });
 
 // Database initialization route (should be protected in production)
-app.post('/init-db', async (req, res) => {
+app.post("/init-db", async (req, res) => {
   try {
     await initializeDatabase();
-    res.json({ message: 'Database initialized successfully' });
+    res.json({ message: "Database initialized successfully" });
   } catch (error) {
-    logger.error('Database initialization failed:', error);
-    res.status(500).json({ error: 'Failed to initialize database' });
+    logger.error("Database initialization failed:", error);
+    res.status(500).json({ error: "Failed to initialize database" });
   }
 });
-
 
 // Error handling middleware
 app.use(errorHandler);
 // test sendEmail
-app.get('/test-send-email', async (req, res) => {
+app.get("/test-send-email", async (req, res) => {
   const payload = {
     to: {
-      Email: 'hiamnhatdz203@gmail.com',
-      Name: 'Nhat'
+      Email: "hiamnhatdz203@gmail.com",
+      Name: "Nhat",
     },
-    subject: 'Test email',
-    text: 'This is a test email',
-    html: '<h3>Hello, welcome to Mailjet!</h3><br />This is an HTML email.'
+    subject: "Test email",
+    text: "This is a test email",
+    html: "<h3>Hello, welcome to Mailjet!</h3><br />This is an HTML email.",
   };
   try {
-    const result = await sendEmail(payload.to, payload.subject, payload.text, payload.html);
-    res.json({ message: 'Email sent successfully', data: result });
+    const result = await sendEmail(
+      payload.to,
+      payload.subject,
+      payload.text,
+      payload.html
+    );
+    res.json({ message: "Email sent successfully", data: result });
   } catch (error) {
-    logger.error('Email sending failed:', error);
-    res.status(500).json({ error: 'Failed to send email' });
+    logger.error("Email sending failed:", error);
+    res.status(500).json({ error: "Failed to send email" });
   }
 });
 
