@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import pool from "../config/database";
 import { RowDataPacket, OkPacket } from "mysql2";
 import activityLogService from "../services/activityLogService";
+import { sendMail } from "./sendMail";
 
 export const getAllInvoices = async (req: Request, res: Response) => {
   try {
@@ -411,7 +412,45 @@ export const createInvoice = async (req: Request, res: Response) => {
         "pending",
       ]
     );
+    // lấy tất cả mail sinh viên trong phòng
+    const [students] = await pool.query<RowDataPacket[]>(
+      `SELECT s.email, s.fullName FROM students s 
+       JOIN contracts c ON s.id = c.studentId 
+       WHERE c.roomId = ? AND c.status = 'active'`,
+      [roomId]
+    );
+    const subject = "Tạo hóa đơn thành công";
+    const text = "Tạo hóa đơn thành công";
+    const html = (student: any) => `<span>Xin chào ${student || "bạn"},</span>
+    <p>Phòng ${room.roomNumber}, tòa nhà ${
+      room.buildingName
+    } vừa có hóa đơn mới cho tháng ${new Date(invoiceDate).toLocaleDateString(
+      "vi-VN",
+      {
+        month: "2-digit",
+        year: "numeric",
+      }
+    )}.</p>
+    <p>Vui lòng truy cập vào <a href="https://ktx-student.vercel.app/">Website quản lý sinh viên</a> để xem thông tin hóa đơn.</p>
+    <p>Xin chân thành cảm ơn!</p>
+    `;
+    const to = students.map((student) => ({
+      Email: student.email ?? "",
+      Name: student.fullName ?? "",
+    }));
 
+    if (students && students.length > 0) {
+      to.forEach((student) => {
+        if (student.Email) {
+          sendMail(student, subject, text, html(student.Name));
+        }
+      });
+    } else {
+      console.log(
+        "Không tìm thấy sinh viên nào trong phòng này hoặc không có hợp đồng active"
+      );
+    }
+    // sendMail(to, subject, text, html);
     // Log activity
     if (req.user?.id) {
       const activityDescription = `Tạo hóa đơn: ${invoiceNumber} cho phòng ${room.roomNumber} tòa nhà ${room.buildingName}`;
@@ -527,6 +566,51 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
         success: false,
         message: "Không tìm thấy hóa đơn",
       });
+    }
+    // lấy tất cả mail sinh viên trong phòng
+    // Lấy thông tin roomId từ bảng invoices
+    const [roomInfo] = await pool.query<RowDataPacket[]>(
+      `SELECT roomId FROM invoices WHERE id = ?`,
+      [invoiceId]
+    );
+
+    const roomId = roomInfo.length > 0 ? roomInfo[0].roomId : null;
+
+    if (!roomId) {
+      console.error("Không tìm thấy roomId cho hóa đơn này");
+    }
+
+    const [students] = await pool.query<RowDataPacket[]>(
+      `SELECT s.email, s.fullName FROM students s 
+       JOIN contracts c ON s.id = c.studentId 
+       WHERE c.roomId = ? AND c.status = 'active'`,
+      [roomId]
+    );
+    console.log("studensssts", students);
+    const subject = "Cập nhật trạng thái hóa đơn";
+    const text = "Cập nhật trạng thái hóa đơn";
+    const html = (student: any) => `<span>Xin chào ${student || "bạn"},</span>
+    <p>Hóa đơn ${currentInvoice[0].invoiceNumber} của phòng ${
+      currentInvoice[0].roomNumber
+    } tòa nhà ${currentInvoice[0].buildingName} vừa có sự thay đổi.</p>
+    <p>Vui lòng truy cập vào <a href="https://ktx-student.vercel.app/">Website quản lý sinh viên</a> để xem thông tin hóa đơn.</p>
+    <p>Xin chân thành cảm ơn!</p>
+    `;
+    const to = students.map((student) => ({
+      Email: student.email ?? "",
+      Name: student.fullName ?? "",
+    }));
+
+    if (students && students.length > 0) {
+      to.forEach((student) => {
+        if (student.Email) {
+          sendMail(student, subject, text, html(student.Name));
+        }
+      });
+    } else {
+      console.log(
+        "Không tìm thấy sinh viên nào trong phòng này hoặc không có hợp đồng active"
+      );
     }
 
     // Log activity
@@ -683,6 +767,39 @@ export const updateInvoice = async (req: Request, res: Response) => {
       });
     }
 
+    // lấy tất cả mail sinh viên trong phòng
+
+    const [students] = await pool.query<RowDataPacket[]>(
+      `SELECT s.email, s.fullName FROM students s 
+       JOIN contracts c ON s.id = c.studentId 
+       WHERE c.roomId = ? AND c.status = 'active'`,
+      [invoice.roomId]
+    );
+    const subject = "Cập nhật hóa đơn";
+    const text = "Cập nhật hóa đơn";
+    const html = (student: any) => `<span>Xin chào ${student || "bạn"},</span>
+    <p>Hóa đơn ${invoice.invoiceNumber} của phòng ${
+      invoice.roomNumber
+    } tòa nhà ${invoice.buildingName} vừa có sự thay đổi.</p>
+    <p>Vui lòng truy cập vào <a href="https://ktx-student.vercel.app/">Website quản lý sinh viên</a> để xem thông tin hóa đơn.</p>
+    <p>Xin chân thành cảm ơn!</p>
+    `;
+    const to = students.map((student) => ({
+      Email: student.email ?? "",
+      Name: student.fullName ?? "",
+    }));
+
+    if (students && students.length > 0) {
+      to.forEach((student) => {
+        if (student.Email) {
+          sendMail(student, subject, text, html(student.Name));
+        }
+      });
+    } else {
+      console.log(
+        "Không tìm thấy sinh viên nào trong phòng này hoặc không có hợp đồng active"
+      );
+    }
     // Log activity
     if (req.user?.id) {
       // Format month for display
@@ -823,6 +940,39 @@ export const deleteInvoice = async (req: Request, res: Response) => {
       });
     }
 
+    // lấy tất cả mail sinh viên trong phòng
+
+    const [students] = await pool.query<RowDataPacket[]>(
+      `SELECT s.email, s.fullName FROM students s 
+       JOIN contracts c ON s.id = c.studentId 
+       WHERE c.roomId = ? AND c.status = 'active'`,
+      [invoice.roomId]
+    );
+    const subject = "Xóa hóa đơn";
+    const text = "Xóa hóa đơn";
+    const html = (student: any) => `<span>Xin chào ${student || "bạn"},</span>
+    <p>Hóa đơn ${invoice.invoiceNumber} của phòng ${
+      invoice.roomNumber
+    } tòa nhà ${invoice.buildingName} đã bị xóa.</p>
+    <p>Vui lòng truy cập vào <a href="https://ktx-student.vercel.app/">Website quản lý sinh viên</a> để xem thông tin hóa đơn.</p>
+    <p>Xin chân thành cảm ơn!</p>
+    `;
+    const to = students.map((student) => ({
+      Email: student.email ?? "",
+      Name: student.fullName ?? "",
+    }));
+
+    if (students && students.length > 0) {
+      to.forEach((student) => {
+        if (student.Email) {
+          sendMail(student, subject, text, html(student.Name));
+        }
+      });
+    } else {
+      console.log(
+        "Không tìm thấy sinh viên nào trong phòng này hoặc không có hợp đồng active"
+      );
+    }
     // Log activity
     if (req.user?.id) {
       const activityDescription = `Xóa hóa đơn: ${invoice.invoiceNumber} của phòng ${invoice.roomNumber} tòa nhà ${invoice.buildingName}`;
@@ -1213,6 +1363,40 @@ export const submitInvoicePayment = async (req: Request, res: Response) => {
         success: false,
         message: "Không thể cập nhật trạng thái hóa đơn",
       });
+    }
+    // lấy tất cả mail sinh viên trong phòng
+    const [students] = await pool.query<RowDataPacket[]>(
+      `SELECT s.email, s.fullName FROM students s 
+       JOIN contracts c ON s.id = c.studentId 
+       WHERE c.roomId = ? AND c.status = 'active'`,
+      [invoice.roomId]
+    );
+    const subject = "Gửi yêu cầu thanh toán hóa đơn";
+    const text = "Gửi yêu cầu thanh toán hóa đơn";
+    const html = (student: any) => `<span>Xin chào ${student || "bạn"},</span>
+    <p>Hóa đơn ${invoice.invoiceNumber} của phòng ${
+      invoice.roomNumber
+    } tòa nhà ${
+      invoice.buildingName
+    } đã được thanh toán. Chúng tôi sẽ xử lý yêu cầu của bạn trong thời gian sớm nhất.</p>
+    <p>Vui lòng truy cập vào <a href="https://ktx-student.vercel.app/">Website quản lý sinh viên</a> để xem thông tin hóa đơn.</p>
+    <p>Xin chân thành cảm ơn!</p>
+    `;
+    const to = students.map((student) => ({
+      Email: student.email ?? "",
+      Name: student.fullName ?? "",
+    }));
+
+    if (students && students.length > 0) {
+      to.forEach((student) => {
+        if (student.Email) {
+          sendMail(student, subject, text, html(student.Name));
+        }
+      });
+    } else {
+      console.log(
+        "Không tìm thấy sinh viên nào trong phòng này hoặc không có hợp đồng active"
+      );
     }
 
     // Log activity
