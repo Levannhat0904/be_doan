@@ -1,7 +1,7 @@
-import bcrypt from 'bcrypt';
-import pool from '../config/database';
-import { USER_TYPES, STATUS } from '../config/constants';
-import { RowDataPacket } from 'mysql2';
+import bcrypt from "bcrypt";
+import pool from "../config/database";
+import { USER_TYPES, STATUS } from "../config/constants";
+import { RowDataPacket } from "mysql2";
 
 interface User extends RowDataPacket {
   id: number;
@@ -25,7 +25,7 @@ interface CreateStudentRequest {
   studentCode: string;
   fullName: string;
   birthDate: Date;
-  gender: 'male' | 'female' | 'other';
+  gender: "male" | "female" | "other";
   phone: string;
   province: string;
   district: string;
@@ -38,19 +38,31 @@ interface CreateStudentRequest {
 }
 
 const requiredFields = [
-  'email', 'studentCode', 'fullName', 'birthDate', 'gender',
-  'phone', 'province', 'district', 'ward',
-  'address', 'faculty', 'major', 'className'
+  "email",
+  "studentCode",
+  "fullName",
+  "birthDate",
+  "gender",
+  "phone",
+  "province",
+  "district",
+  "ward",
+  "address",
+  "faculty",
+  "major",
+  "className",
 ];
 
 export class StudentService {
-  static async createStudent(data: CreateStudentRequest): Promise<{ id: number }> {
+  static async createStudent(
+    data: CreateStudentRequest
+  ): Promise<{ id: number }> {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
       // Tạo user với password rỗng
       const [userResult] = await connection.query(
-        'INSERT INTO users (email, userType, status) VALUES (?, ?, ?)',
+        "INSERT INTO users (email, userType, status) VALUES (?, ?, ?)",
         [data.email, USER_TYPES.STUDENT, STATUS.PENDING]
       );
 
@@ -66,11 +78,22 @@ export class StudentService {
           avatarPath
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          userId, data.studentCode, data.fullName, data.birthDate, STATUS.PENDING,
-          data.gender, data.phone, data.email,
-          data.province, data.district, data.ward, data.address,
-          data.faculty, data.major, data.className,
-          data.avatarPath || null
+          userId,
+          data.studentCode,
+          data.fullName,
+          data.birthDate,
+          STATUS.PENDING,
+          data.gender,
+          data.phone,
+          data.email,
+          data.province,
+          data.district,
+          data.ward,
+          data.address,
+          data.faculty,
+          data.major,
+          data.className,
+          data.avatarPath || null,
         ]
       );
 
@@ -78,7 +101,7 @@ export class StudentService {
       return { id: userId };
     } catch (error) {
       await connection.rollback();
-      console.error('Error in createStudent:', error);
+      console.error("Error in createStudent:", error);
       throw error;
     } finally {
       connection.release();
@@ -92,37 +115,37 @@ export class StudentService {
 
       // Lấy thông tin sinh viên
       const [students] = await connection.query<Student[]>(
-        'SELECT * FROM students WHERE id = ?',
+        "SELECT * FROM students WHERE id = ?",
         [studentId]
       );
 
       if (!students.length) {
-        throw new Error('Không tìm thấy sinh viên');
+        throw new Error("Không tìm thấy sinh viên");
       }
 
       const student = students[0];
 
       // Format ngày sinh thành password: DD/MM/YYYY
       const birthDate = new Date(student.birthDate);
-      const password = birthDate.toLocaleDateString('vi-VN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
+      const password = birthDate.toLocaleDateString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
       });
 
       const hashedPassword = await bcrypt.hash(password, 10);
 
       // Cập nhật password và status của user
       await connection.query(
-        'UPDATE users SET password = ?, status = ? WHERE id = ?',
+        "UPDATE users SET password = ?, status = ? WHERE id = ?",
         [hashedPassword, STATUS.ACTIVE, student.userId]
       );
 
       // Cập nhật status của student
-      await connection.query(
-        'UPDATE students SET status = ? WHERE id = ?',
-        ['active', studentId]
-      );
+      await connection.query("UPDATE students SET status = ? WHERE id = ?", [
+        "active",
+        studentId,
+      ]);
 
       await connection.commit();
     } catch (error) {
@@ -140,32 +163,32 @@ export class StudentService {
 
       // Lấy thông tin sinh viên
       const [students] = await connection.query<Student[]>(
-        'SELECT * FROM students WHERE id = ?',
+        "SELECT * FROM students WHERE id = ?",
         [studentId]
       );
 
       if (!students.length) {
-        throw new Error('Không tìm thấy sinh viên');
+        throw new Error("Không tìm thấy sinh viên");
       }
 
       const student = students[0];
 
       // 1. Cập nhật status của user thành inactive
-      await connection.query(
-        'UPDATE users SET status = ? WHERE id = ?',
-        [STATUS.INACTIVE, student.userId]
-      );
+      await connection.query("UPDATE users SET status = ? WHERE id = ?", [
+        STATUS.INACTIVE,
+        student.userId,
+      ]);
 
       // 2. Cập nhật status của student thành inactive
-      await connection.query(
-        'UPDATE students SET status = ? WHERE id = ?',
-        ['inactive', studentId]
-      );
+      await connection.query("UPDATE students SET status = ? WHERE id = ?", [
+        "inactive",
+        studentId,
+      ]);
 
       // 3. Cập nhật trạng thái tất cả các hợp đồng liên quan thành terminated
       await connection.query(
-        'UPDATE contracts SET status = ? WHERE studentId = ? AND status = ?',
-        ['terminated', studentId, 'active']
+        "UPDATE contracts SET status = ? WHERE studentId = ? AND status = ?",
+        ["terminated", studentId, "active"]
       );
 
       // 4. Lấy phòng mà sinh viên đã được gán (để cập nhật currentOccupancy)
@@ -180,21 +203,25 @@ export class StudentService {
       // 5. Cập nhật currentOccupancy của từng phòng
       for (const room of roomResults) {
         await connection.query(
-          'UPDATE rooms SET currentOccupancy = GREATEST(0, currentOccupancy - 1) WHERE id = ?',
+          "UPDATE rooms SET currentOccupancy = GREATEST(0, currentOccupancy - 1) WHERE id = ?",
           [room.id]
         );
       }
+      // 6. Xoá mật khẩu của user
+      await connection.query("UPDATE users SET password = NULL WHERE id = ?", [
+        student.userId,
+      ]);
 
-      // 6. Ghi log hoạt động
+      // 7. Ghi log hoạt động
       await connection.query(
         `INSERT INTO activity_logs (userId, action, entityType, entityId, description)
          VALUES (?, ?, ?, ?, ?)`,
         [
           student.userId,
-          'reject',
-          'student',
+          "reject",
+          "student",
           studentId,
-          'Từ chối sinh viên và chấm dứt các hợp đồng liên quan'
+          "Từ chối sinh viên và chấm dứt các hợp đồng liên quan",
         ]
       );
 
@@ -210,17 +237,23 @@ export class StudentService {
   static async getAllStudents(
     page: number = 1,
     limit: number = 10,
-    search: string = ''
-  ): Promise<{ students: any[], total: number }> {
+    search: string = ""
+  ): Promise<{ students: any[]; total: number }> {
     const connection = await pool.getConnection();
     try {
       const offset = (page - 1) * limit;
       const searchPattern = `%${search}%`;
 
       // Log để kiểm tra giá trị đầu vào
-      console.log('Search params:', { page, limit, search, offset, searchPattern });
+      console.log("Search params:", {
+        page,
+        limit,
+        search,
+        offset,
+        searchPattern,
+      });
 
-      let whereClause = '1=1'; // Always true if no search
+      let whereClause = "1=1"; // Always true if no search
       let queryParams = [];
 
       if (search && search.trim()) {
@@ -243,8 +276,8 @@ export class StudentService {
         LEFT JOIN users u ON s.userId = u.id
         WHERE ${whereClause}
       `;
-      console.log('Count Query:', countQuery);
-      console.log('Count Params:', queryParams);
+      console.log("Count Query:", countQuery);
+      console.log("Count Params:", queryParams);
 
       const [countResult] = await connection.query(countQuery, queryParams);
       const total = (countResult as any)[0].total;
@@ -264,20 +297,20 @@ export class StudentService {
         LIMIT ? OFFSET ?
       `;
       const selectParams = [...queryParams, limit, offset];
-      console.log('Select Query:', selectQuery);
-      console.log('Select Params:', selectParams);
+      console.log("Select Query:", selectQuery);
+      console.log("Select Params:", selectParams);
 
       const [students] = await connection.query(selectQuery, selectParams);
 
       // Log kết quả
-      console.log('Total records:', total);
+      console.log("Total records:", total);
 
       return {
         students: students as any[],
-        total
+        total,
       };
     } catch (error) {
-      console.error('Error in getAllStudents:', error);
+      console.error("Error in getAllStudents:", error);
       throw error;
     } finally {
       connection.release();
@@ -288,12 +321,12 @@ export class StudentService {
     const connection = await pool.getConnection();
     try {
       const [students] = await connection.query<Student[]>(
-        'SELECT * FROM students WHERE id = ?',
+        "SELECT * FROM students WHERE id = ?",
         [id]
       );
 
       if (!students.length) {
-        throw new Error('Không tìm thấy sinh viên');
+        throw new Error("Không tìm thấy sinh viên");
       }
 
       return students[0];
@@ -307,17 +340,14 @@ export class StudentService {
   static async updateStudentStatus(id: number, status: string): Promise<void> {
     const connection = await pool.getConnection();
     try {
-      await connection.query(
-        'UPDATE students SET status = ? WHERE id = ?',
-        [status, id]
-      );
+      await connection.query("UPDATE students SET status = ? WHERE id = ?", [
+        status,
+        id,
+      ]);
     } catch (error) {
       throw error;
     } finally {
       connection.release();
     }
   }
-
-
-
-} 
+}
