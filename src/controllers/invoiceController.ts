@@ -423,7 +423,9 @@ export const createInvoice = async (req: Request, res: Response) => {
         "invoice",
         result.insertId,
         activityDescription,
-        req
+        req,
+        Number(roomId),
+        result.insertId
       );
 
       // Log to room entity for room timeline
@@ -433,7 +435,9 @@ export const createInvoice = async (req: Request, res: Response) => {
         "room",
         Number(roomId),
         activityDescription,
-        req
+        req,
+        Number(roomId),
+        result.insertId
       );
     }
 
@@ -544,7 +548,9 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
         "invoice",
         Number(invoiceId),
         activityDescription,
-        req
+        req,
+        Number(roomId),
+        Number(invoiceId)
       );
 
       // Log to room entity for room timeline if roomId is available
@@ -555,7 +561,9 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
           "room",
           roomId,
           activityDescription,
-          req
+          req,
+          Number(roomId),
+          Number(invoiceId)
         );
       }
     }
@@ -740,7 +748,9 @@ export const updateInvoice = async (req: Request, res: Response) => {
         "invoice",
         Number(invoiceId),
         description,
-        req
+        req,
+        Number(invoice.roomId),
+        Number(invoiceId)
       );
 
       // Log to room entity for room timeline
@@ -750,7 +760,9 @@ export const updateInvoice = async (req: Request, res: Response) => {
         "room",
         invoice.roomId,
         description,
-        req
+        req,
+        Number(invoice.roomId),
+        Number(invoiceId)
       );
     }
 
@@ -822,7 +834,9 @@ export const deleteInvoice = async (req: Request, res: Response) => {
         "invoice",
         Number(invoiceId),
         activityDescription,
-        req
+        req,
+        Number(invoice.roomId),
+        Number(invoiceId)
       );
 
       // Log to room entity for room timeline
@@ -832,7 +846,9 @@ export const deleteInvoice = async (req: Request, res: Response) => {
         "room",
         invoice.roomId,
         activityDescription,
-        req
+        req,
+        Number(invoice.roomId),
+        Number(invoiceId)
       );
     }
 
@@ -1140,7 +1156,7 @@ export const submitInvoicePayment = async (req: Request, res: Response) => {
   try {
     const { invoiceId } = req.params;
     const { paymentMethod } = req.body;
-
+    console.log("studentss", req.user?.id);
     // Validate
     if (!paymentMethod) {
       return res.status(400).json({
@@ -1166,7 +1182,11 @@ export const submitInvoicePayment = async (req: Request, res: Response) => {
         message: "Không tìm thấy hóa đơn",
       });
     }
-
+    const [student] = await pool.query<RowDataPacket[]>(
+      `SELECT * FROM students WHERE userId = ?`,
+      [req.user?.id]
+    );
+    console.log("studenssst", student);
     const invoice = currentInvoice[0];
 
     // Only allow payment for pending or overdue invoices
@@ -1197,8 +1217,8 @@ export const submitInvoicePayment = async (req: Request, res: Response) => {
 
     // Log activity
     if (req.user?.id) {
-      const activityDescription = `Sinh viên ${invoice.fullName || ""} (${
-        invoice.studentCode || ""
+      const activityDescription = `Sinh viên ${student[0]?.fullName || ""} (${
+        student[0]?.studentCode || ""
       }) đã gửi yêu cầu thanh toán hóa đơn ${invoice.invoiceNumber} (Phòng: ${
         invoice.roomNumber
       }, Tòa nhà: ${invoice.buildingName})`;
@@ -1209,7 +1229,9 @@ export const submitInvoicePayment = async (req: Request, res: Response) => {
         "invoice",
         Number(invoiceId),
         activityDescription,
-        req
+        req,
+        Number(invoice.roomId),
+        Number(invoiceId)
       );
     }
 

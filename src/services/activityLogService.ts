@@ -1,5 +1,5 @@
-import { Request } from 'express';
-import db from '../config/database';
+import { Request } from "express";
+import db from "../config/database";
 
 /**
  * Activity logger service to track user actions
@@ -20,20 +20,36 @@ class ActivityLogService {
     entityType: string,
     entityId: number | null,
     description: string,
-    req?: Request
+    req?: Request,
+    roomId?: number,
+    invoiceId?: number,
+    contractId?: number,
+    studentId?: number
   ): Promise<void> {
     try {
       const ipAddress = req?.ip || null;
-      const userAgent = req?.headers['user-agent'] || null;
+      const userAgent = req?.headers["user-agent"] || null;
 
       await db.query(
         `INSERT INTO activity_logs 
-        (userId, action, entityType, entityId, description, ipAddress, userAgent) 
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [userId, action, entityType, entityId, description, ipAddress, userAgent]
+        (userId, action, entityType, entityId, description, ipAddress, userAgent, roomId, invoiceId, contractId) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          action,
+          entityType,
+          entityId,
+          description,
+          ipAddress,
+          userAgent,
+          roomId,
+          invoiceId,
+          contractId,
+          studentId,
+        ]
       );
     } catch (error) {
-      console.error('Error logging activity:', error);
+      console.error("Error logging activity:", error);
       // We don't throw here to prevent affecting the main operation
     }
   }
@@ -41,7 +57,17 @@ class ActivityLogService {
   /**
    * Get activity logs with pagination
    */
-  async getActivityLogs(page = 1, limit = 20, userId?: number, entityType?: string, action?: string) {
+  async getActivityLogs(
+    page = 1,
+    limit = 20,
+    entityId?: number,
+    entityType?: string,
+    action?: string,
+    roomId?: number,
+    invoiceId?: number,
+    contractId?: number,
+    studentId?: number
+  ) {
     try {
       let query = `
         SELECT al.*, u.email, 
@@ -59,9 +85,9 @@ class ActivityLogService {
 
       const params: any[] = [];
 
-      if (userId) {
-        query += ` AND al.userId = ?`;
-        params.push(userId);
+      if (entityId) {
+        query += ` AND al.entityId = ?`;
+        params.push(entityId);
       }
 
       if (entityType) {
@@ -74,6 +100,26 @@ class ActivityLogService {
         params.push(action);
       }
 
+      if (roomId) {
+        query += ` AND al.roomId = ?`;
+        params.push(roomId);
+      }
+
+      if (invoiceId) {
+        query += ` AND al.invoiceId = ?`;
+        params.push(invoiceId);
+      }
+
+      if (contractId) {
+        query += ` AND al.contractId = ?`;
+        params.push(contractId);
+      }
+
+      if (studentId) {
+        query += ` AND al.studentId = ?`;
+        params.push(studentId);
+      }
+
       // Add ordering and pagination
       query += ` ORDER BY al.createdAt DESC LIMIT ? OFFSET ?`;
       params.push(limit, (page - 1) * limit);
@@ -84,9 +130,9 @@ class ActivityLogService {
       let countQuery = `SELECT COUNT(*) as total FROM activity_logs WHERE 1=1`;
       const countParams: any[] = [];
 
-      if (userId) {
-        countQuery += ` AND userId = ?`;
-        countParams.push(userId);
+      if (entityId) {
+        countQuery += ` AND entityId = ?`;
+        countParams.push(entityId);
       }
 
       if (entityType) {
@@ -99,6 +145,26 @@ class ActivityLogService {
         countParams.push(action);
       }
 
+      if (studentId) {
+        countQuery += ` AND studentId = ?`;
+        countParams.push(studentId);
+      }
+
+      if (roomId) {
+        countQuery += ` AND roomId = ?`;
+        countParams.push(roomId);
+      }
+
+      if (invoiceId) {
+        countQuery += ` AND invoiceId = ?`;
+        countParams.push(invoiceId);
+      }
+
+      if (contractId) {
+        countQuery += ` AND contractId = ?`;
+        countParams.push(contractId);
+      }
+
       const [countResult] = await db.query(countQuery, countParams);
       const total = (countResult as any)[0].total;
 
@@ -108,14 +174,14 @@ class ActivityLogService {
           page,
           limit,
           total,
-          totalPages: Math.ceil(total / limit)
-        }
+          totalPages: Math.ceil(total / limit),
+        },
       };
     } catch (error) {
-      console.error('Error getting activity logs:', error);
+      console.error("Error getting activity logs:", error);
       throw error;
     }
   }
 }
 
-export default new ActivityLogService(); 
+export default new ActivityLogService();

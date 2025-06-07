@@ -1,11 +1,11 @@
-import { Request, Response } from 'express';
-import pool from '../config/database';
-import { RowDataPacket, OkPacket } from 'mysql2';
-import fs from 'fs';
-import { Room, RoomFilters, RoomResponse } from '../types/room/room';
-import activityLogService from '../services/activityLogService';
-import path from 'path';
-import FilesService from '../services/FilesService';
+import { Request, Response } from "express";
+import pool from "../config/database";
+import { RowDataPacket, OkPacket } from "mysql2";
+import fs from "fs";
+import { Room, RoomFilters, RoomResponse } from "../types/room/room";
+import activityLogService from "../services/activityLogService";
+import path from "path";
+import FilesService from "../services/FilesService";
 // Add this type at the top
 type QueryResult = RowDataPacket[];
 
@@ -44,7 +44,7 @@ export const getRooms = async (req: Request, res: Response) => {
 
     if (filters.status) {
       whereConditions.push(`r.status = ?`);
-      values.push(filters.status === 'active' ? 'available' : 'maintenance');
+      values.push(filters.status === "active" ? "available" : "maintenance");
     }
 
     if (filters.searchText) {
@@ -53,16 +53,16 @@ export const getRooms = async (req: Request, res: Response) => {
     }
 
     if (whereConditions.length > 0) {
-      baseQuery += ` WHERE ${whereConditions.join(' AND ')}`;
+      baseQuery += ` WHERE ${whereConditions.join(" AND ")}`;
     }
 
     baseQuery += ` GROUP BY r.id, b.name`;
 
     // Add HAVING clause for availability filter
     let query = baseQuery;
-    if (filters.availability === 'available') {
+    if (filters.availability === "available") {
       query += ` HAVING occupiedBeds < r.capacity`;
-    } else if (filters.availability === 'full') {
+    } else if (filters.availability === "full") {
       query += ` HAVING occupiedBeds >= r.capacity`;
     }
 
@@ -88,32 +88,35 @@ export const getRooms = async (req: Request, res: Response) => {
         ROUND(AVG(CAST(occupiedBeds AS FLOAT) / capacity * 100)) as occupancyRate
       FROM (${baseQuery}) as stats
     `;
-    const [summaryResult] = await pool.query<RowDataPacket[]>(summaryQuery, values);
+    const [summaryResult] = await pool.query<RowDataPacket[]>(
+      summaryQuery,
+      values
+    );
     const summary = summaryResult[0];
 
     const response: RoomResponse = {
-      data: rooms.map(room => ({
+      data: rooms.map((room) => ({
         ...room,
-        amenities: room.amenities || []
+        amenities: room.amenities || [],
       })),
       pagination: {
         currentPage: page,
         itemsPerPage: limit,
         totalItems,
-        totalPages: Math.ceil(totalItems / limit)
+        totalPages: Math.ceil(totalItems / limit),
       },
       summary: {
         totalRooms: parseInt(summary.totalRooms),
         availableRooms: parseInt(summary.availableRooms),
         maintenanceRooms: parseInt(summary.maintenanceRooms),
-        occupancyRate: parseInt(summary.occupancyRate)
-      }
+        occupancyRate: parseInt(summary.occupancyRate),
+      },
     };
 
     res.json(response);
   } catch (error) {
-    console.error('Error getting rooms:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error getting rooms:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
@@ -122,7 +125,7 @@ export const getRoomDetail = async (req: Request, res: Response) => {
     const roomId = req.params.id;
 
     if (!roomId) {
-      return res.status(400).json({ message: 'Room ID is required' });
+      return res.status(400).json({ message: "Room ID is required" });
     }
 
     // Get room details
@@ -136,7 +139,7 @@ export const getRoomDetail = async (req: Request, res: Response) => {
     const [roomData] = await pool.query<RowDataPacket[]>(roomQuery, [roomId]);
 
     if (!roomData || roomData.length === 0) {
-      return res.status(404).json({ message: 'Room not found' });
+      return res.status(404).json({ message: "Room not found" });
     }
 
     const room = {
@@ -151,14 +154,16 @@ export const getRoomDetail = async (req: Request, res: Response) => {
       pricePerMonth: roomData[0].pricePerMonth,
       status: roomData[0].status,
       description: roomData[0].description,
-      amenities: roomData[0].amenities ?
-        (typeof roomData[0].amenities === 'string' ?
-          JSON.parse(roomData[0].amenities) : roomData[0].amenities) : [],
+      amenities: roomData[0].amenities
+        ? typeof roomData[0].amenities === "string"
+          ? JSON.parse(roomData[0].amenities)
+          : roomData[0].amenities
+        : [],
       lastCleaned: roomData[0].lastCleaned,
       createdAt: roomData[0].createdAt,
       updatedAt: roomData[0].updatedAt,
       roomArea: 0, // Optional
-      notes: '' // Optional
+      notes: "", // Optional
     };
 
     // Đếm số chỗ đã được sử dụng (dựa trên số hợp đồng active)
@@ -168,7 +173,10 @@ export const getRoomDetail = async (req: Request, res: Response) => {
       WHERE c.roomId = ? AND c.status = 'active'
     `;
 
-    const [occupiedBedsData] = await pool.query<RowDataPacket[]>(occupiedBedsQuery, [roomId]);
+    const [occupiedBedsData] = await pool.query<RowDataPacket[]>(
+      occupiedBedsQuery,
+      [roomId]
+    );
     room.occupiedBeds = occupiedBedsData[0].occupiedBeds;
 
     // Get residents in the room
@@ -186,7 +194,9 @@ export const getRoomDetail = async (req: Request, res: Response) => {
       WHERE c.roomId = ? AND c.status = 'active'
     `;
 
-    const [residentsRows] = await pool.query<RowDataPacket[]>(residentsQuery, [roomId]);
+    const [residentsRows] = await pool.query<RowDataPacket[]>(residentsQuery, [
+      roomId,
+    ]);
 
     const residents = residentsRows.map((resident) => ({
       id: resident.id,
@@ -201,7 +211,7 @@ export const getRoomDetail = async (req: Request, res: Response) => {
       faculty: resident.faculty,
       major: resident.major,
       avatarPath: resident.avatarPath,
-      paymentStatus: resident.paymentStatus
+      paymentStatus: resident.paymentStatus,
     }));
 
     // Get maintenance history
@@ -217,7 +227,10 @@ export const getRoomDetail = async (req: Request, res: Response) => {
       LIMIT 10
     `;
 
-    const [maintenanceRows] = await pool.query<RowDataPacket[]>(maintenanceQuery, [roomId]);
+    const [maintenanceRows] = await pool.query<RowDataPacket[]>(
+      maintenanceQuery,
+      [roomId]
+    );
 
     const maintenanceHistory = maintenanceRows.map((maintenance) => {
       let images = [];
@@ -230,7 +243,7 @@ export const getRoomDetail = async (req: Request, res: Response) => {
           }
         }
       } catch (error) {
-        console.error('Error parsing maintenance images:', error);
+        console.error("Error parsing maintenance images:", error);
         images = maintenance.imagePaths ? [maintenance.imagePaths] : [];
       }
 
@@ -246,7 +259,7 @@ export const getRoomDetail = async (req: Request, res: Response) => {
         priority: maintenance.priority,
         resolvedAt: maintenance.resolvedAt,
         resolutionNote: maintenance.resolutionNote,
-        images
+        images,
       };
     });
 
@@ -270,7 +283,10 @@ export const getRoomDetail = async (req: Request, res: Response) => {
         m.createdAt DESC
     `;
 
-    const [pendingRows] = await pool.query<RowDataPacket[]>(pendingRequestsQuery, [roomId]);
+    const [pendingRows] = await pool.query<RowDataPacket[]>(
+      pendingRequestsQuery,
+      [roomId]
+    );
 
     const pendingRequests = pendingRows.map((request) => {
       let images = [];
@@ -283,7 +299,7 @@ export const getRoomDetail = async (req: Request, res: Response) => {
           }
         }
       } catch (error) {
-        console.error('Error parsing request images:', error);
+        console.error("Error parsing request images:", error);
         images = request.imagePaths ? [request.imagePaths] : [];
       }
 
@@ -298,7 +314,7 @@ export const getRoomDetail = async (req: Request, res: Response) => {
         priority: request.priority,
         resolvedAt: request.resolvedAt,
         resolutionNote: request.resolutionNote,
-        images
+        images,
       };
     });
 
@@ -319,7 +335,9 @@ export const getRoomDetail = async (req: Request, res: Response) => {
       LIMIT 6
     `;
 
-    const [utilitiesRows] = await pool.query<RowDataPacket[]>(utilitiesQuery, [roomId]);
+    const [utilitiesRows] = await pool.query<RowDataPacket[]>(utilitiesQuery, [
+      roomId,
+    ]);
 
     const utilities = utilitiesRows.map((utility) => ({
       id: utility.id,
@@ -332,7 +350,7 @@ export const getRoomDetail = async (req: Request, res: Response) => {
       totalCost: utility.totalCost,
       dueDate: utility.dueDate,
       status: utility.status,
-      paidDate: utility.paidDate
+      paidDate: utility.paidDate,
     }));
 
     // Combine all data
@@ -341,13 +359,15 @@ export const getRoomDetail = async (req: Request, res: Response) => {
       residents,
       maintenanceHistory,
       pendingRequests,
-      utilities
+      utilities,
     };
 
     res.status(200).json(roomDetail);
   } catch (error: any) {
-    console.error('Error fetching room detail:', error);
-    res.status(500).json({ message: 'Error fetching room detail', error: error.message });
+    console.error("Error fetching room detail:", error);
+    res
+      .status(500)
+      .json({ message: "Error fetching room detail", error: error.message });
   }
 };
 
@@ -364,40 +384,47 @@ export const addRoom = async (req: Request, res: Response) => {
       description,
       roomArea,
       notes,
-      amenities
+      amenities,
     } = req.body;
 
     // Validate required fields
-    if (!buildingId || !roomNumber || !floorNumber || !roomType || !capacity || !pricePerMonth) {
+    if (
+      !buildingId ||
+      !roomNumber ||
+      !floorNumber ||
+      !roomType ||
+      !capacity ||
+      !pricePerMonth
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields'
+        message: "Missing required fields",
       });
     }
 
     // Check if building exists
     const [buildingResult] = await pool.query<RowDataPacket[]>(
-      'SELECT id, name FROM buildings WHERE id = ?',
+      "SELECT id, name FROM buildings WHERE id = ?",
       [buildingId]
     );
 
     if (buildingResult.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Building not found'
+        message: "Building not found",
       });
     }
 
     // Check if room already exists in this building
     const [roomExistsResult] = await pool.query<RowDataPacket[]>(
-      'SELECT id FROM rooms WHERE buildingId = ? AND roomNumber = ?',
+      "SELECT id FROM rooms WHERE buildingId = ? AND roomNumber = ?",
       [buildingId, roomNumber]
     );
 
     if (roomExistsResult.length > 0) {
       return res.status(400).json({
         success: false,
-        message: 'Room number already exists in this building'
+        message: "Room number already exists in this building",
       });
     }
 
@@ -417,7 +444,7 @@ export const addRoom = async (req: Request, res: Response) => {
         roomArea || null,
         notes || null,
         amenities ? JSON.stringify(amenities) : null,
-        'available'
+        "available",
       ]
     );
 
@@ -425,24 +452,27 @@ export const addRoom = async (req: Request, res: Response) => {
     if (req.user?.id) {
       await activityLogService.logActivity(
         req.user.id,
-        'create',
-        'room',
+        "create",
+        "room",
         result.insertId,
         `Tạo phòng mới: ${roomNumber} tại tòa nhà ${buildingResult[0].name}`,
-        req
+        req,
+        result.insertId,
+        undefined,
+        undefined
       );
     }
 
     return res.status(201).json({
       success: true,
-      message: 'Room created successfully',
-      data: { id: result.insertId }
+      message: "Room created successfully",
+      data: { id: result.insertId },
     });
   } catch (error) {
-    console.error('Error adding room:', error);
+    console.error("Error adding room:", error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: "Internal server error",
     });
   }
 };
@@ -457,7 +487,7 @@ export const updateRoom = async (req: Request, res: Response) => {
     if (!roomId) {
       return res.status(400).json({
         success: false,
-        message: 'Room ID is required'
+        message: "Room ID is required",
       });
     }
 
@@ -466,7 +496,7 @@ export const updateRoom = async (req: Request, res: Response) => {
     if (isNaN(roomIdNumber)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid room ID format'
+        message: "Invalid room ID format",
       });
     }
 
@@ -481,42 +511,49 @@ export const updateRoom = async (req: Request, res: Response) => {
       roomArea,
       notes,
       amenities,
-      status
+      status,
     } = req.body;
 
     console.log("Received body:", req.body);
 
     // Validate required fields
-    if (!buildingId || !roomNumber || !floorNumber || !roomType || !capacity || !pricePerMonth) {
+    if (
+      !buildingId ||
+      !roomNumber ||
+      !floorNumber ||
+      !roomType ||
+      !capacity ||
+      !pricePerMonth
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields'
+        message: "Missing required fields",
       });
     }
 
     // Check if building exists
     const [buildingResult] = await pool.query<RowDataPacket[]>(
-      'SELECT id, name FROM buildings WHERE id = ?',
+      "SELECT id, name FROM buildings WHERE id = ?",
       [buildingId]
     );
 
     if (buildingResult.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Building not found'
+        message: "Building not found",
       });
     }
 
     // Check if room exists
     const [roomResult] = await pool.query<RowDataPacket[]>(
-      'SELECT * FROM rooms WHERE id = ?',
+      "SELECT * FROM rooms WHERE id = ?",
       [roomIdNumber]
     );
 
     if (roomResult.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Room not found'
+        message: "Room not found",
       });
     }
 
@@ -525,14 +562,14 @@ export const updateRoom = async (req: Request, res: Response) => {
     // Check if the new room number already exists (but not for this room)
     if (roomNumber !== existingRoom.roomNumber) {
       const [roomExistsResult] = await pool.query<RowDataPacket[]>(
-        'SELECT id FROM rooms WHERE buildingId = ? AND roomNumber = ? AND id != ?',
+        "SELECT id FROM rooms WHERE buildingId = ? AND roomNumber = ? AND id != ?",
         [buildingId, roomNumber, roomIdNumber]
       );
 
       if (roomExistsResult.length > 0) {
         return res.status(400).json({
           success: false,
-          message: 'Room number already exists in this building'
+          message: "Room number already exists in this building",
         });
       }
     }
@@ -549,7 +586,7 @@ export const updateRoom = async (req: Request, res: Response) => {
     if (capacity < currentOccupancy) {
       return res.status(400).json({
         success: false,
-        message: `New capacity (${capacity}) cannot be less than current occupancy (${currentOccupancy})`
+        message: `New capacity (${capacity}) cannot be less than current occupancy (${currentOccupancy})`,
       });
     }
 
@@ -580,7 +617,7 @@ export const updateRoom = async (req: Request, res: Response) => {
         notes || null,
         amenities ? JSON.stringify(amenities) : null,
         status || existingRoom.status,
-        roomIdNumber
+        roomIdNumber,
       ]
     );
 
@@ -589,28 +626,32 @@ export const updateRoom = async (req: Request, res: Response) => {
       if (req.user && req.user.id) {
         await activityLogService.logActivity(
           req.user.id,
-          'update',
-          'room',
+          "update",
+          "room",
           Number(roomIdNumber),
           `Cập nhật thông tin phòng: ${existingRoom.roomNumber} -> ${roomNumber} tại tòa nhà ${buildingResult[0].name}`,
-          req
+          req,
+          Number(roomIdNumber),
+          undefined,
+          undefined,
+          undefined
         );
       }
     } catch (logError) {
-      console.error('Error logging activity:', logError);
+      console.error("Error logging activity:", logError);
       // Continue with the response even if logging fails
     }
 
     return res.json({
       success: true,
-      message: 'Room updated successfully'
+      message: "Room updated successfully",
     });
   } catch (error) {
-    console.error('Error updating room:', error);
+    console.error("Error updating room:", error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error instanceof Error ? error.message : String(error)
+      message: "Internal server error",
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -632,7 +673,7 @@ export const deleteRoom = async (req: Request, res: Response) => {
     if (roomResult.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Room not found'
+        message: "Room not found",
       });
     }
 
@@ -647,34 +688,38 @@ export const deleteRoom = async (req: Request, res: Response) => {
     if (contractsResult[0].count > 0) {
       return res.status(400).json({
         success: false,
-        message: 'Cannot delete room with active contracts'
+        message: "Cannot delete room with active contracts",
       });
     }
 
     // Delete room
-    await pool.query('DELETE FROM rooms WHERE id = ?', [roomId]);
+    await pool.query("DELETE FROM rooms WHERE id = ?", [roomId]);
 
     // Log activity
     if (req.user?.id) {
       await activityLogService.logActivity(
         req.user.id,
-        'delete',
-        'room',
+        "delete",
+        "room",
         Number(roomId),
         `Xóa phòng: ${room.roomNumber} tại tòa nhà ${room.buildingName}`,
-        req
+        req,
+        Number(roomId),
+        undefined,
+        undefined,
+        undefined
       );
     }
 
     return res.json({
       success: true,
-      message: 'Room deleted successfully'
+      message: "Room deleted successfully",
     });
   } catch (error) {
-    console.error('Error deleting room:', error);
+    console.error("Error deleting room:", error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: "Internal server error",
     });
   }
 };
@@ -685,18 +730,18 @@ export const updateRoomStatus = async (req: Request, res: Response) => {
     const roomIdParam = req.params.id;
     const { status, notes } = req.body;
 
-    console.log('Update Room Status Request:', {
+    console.log("Update Room Status Request:", {
       roomIdParam,
       status,
       notes,
       body: req.body,
-      params: req.params
+      params: req.params,
     });
 
     if (!roomIdParam) {
       return res.status(400).json({
         success: false,
-        message: 'Room ID is required'
+        message: "Room ID is required",
       });
     }
 
@@ -705,14 +750,14 @@ export const updateRoomStatus = async (req: Request, res: Response) => {
     if (isNaN(roomId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid room ID format'
+        message: "Invalid room ID format",
       });
     }
 
-    if (!status || !['available', 'maintenance', 'full'].includes(status)) {
+    if (!status || !["available", "maintenance", "full"].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid status value'
+        message: "Invalid status value",
       });
     }
 
@@ -725,66 +770,71 @@ export const updateRoomStatus = async (req: Request, res: Response) => {
       [roomId]
     );
 
-    console.log('Room query result:', roomResult);
+    console.log("Room query result:", roomResult);
 
     if (roomResult.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Room not found'
+        message: "Room not found",
       });
     }
 
     const currentRoom = roomResult[0];
-    console.log('Current room:', currentRoom);
+    console.log("Current room:", currentRoom);
 
     // Check if the room has active contracts when trying to set to maintenance
-    if (status === 'maintenance' && currentRoom.status !== 'maintenance') {
+    if (status === "maintenance" && currentRoom.status !== "maintenance") {
       const [contractsResult] = await pool.query<RowDataPacket[]>(
         'SELECT COUNT(*) as activeContracts FROM contracts WHERE roomId = ? AND status = "active"',
         [roomId]
       );
 
       const activeContracts = contractsResult[0].activeContracts;
-      console.log('Active contracts:', activeContracts);
+      console.log("Active contracts:", activeContracts);
 
       if (activeContracts > 0) {
         return res.status(400).json({
           success: false,
-          message: 'Cannot set room to maintenance when it has active contracts'
+          message:
+            "Cannot set room to maintenance when it has active contracts",
         });
       }
     }
 
     // Update room status
     const [updateResult] = await pool.query<OkPacket>(
-      'UPDATE rooms SET status = ?, notes = ? WHERE id = ?',
+      "UPDATE rooms SET status = ?, notes = ? WHERE id = ?",
       [status, notes || currentRoom.notes, roomId]
     );
 
-    console.log('Update result:', updateResult);
+    console.log("Update result:", updateResult);
 
     // Log activity
     if (req.user?.id) {
       await activityLogService.logActivity(
         req.user.id,
-        'status_change',
-        'room',
+        "status_change",
+        "room",
         roomId,
         `Cập nhật trạng thái phòng: ${currentRoom.status} -> ${status} cho phòng ${currentRoom.roomNumber} tại tòa nhà ${currentRoom.buildingName}`,
-        req
+        req,
+        Number(roomId),
+        undefined,
+        undefined,
+        undefined
       );
     }
 
     return res.json({
       success: true,
-      message: 'Room status updated successfully'
+      message: "Room status updated successfully",
     });
   } catch (error) {
-    console.error('Error updating room status:', error);
+    console.error("Error updating room status:", error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error instanceof Error ? error.message : String(error)
+      message: "Internal server error",
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -798,26 +848,26 @@ export const addMaintenance = async (req: Request, res: Response) => {
       params: req.params,
       body: req.body,
       roomId,
-      files: req.files
+      files: req.files,
     });
 
     if (isNaN(roomId)) {
       return res.status(400).json({
         success: false,
-        message: 'ID phòng không hợp lệ'
+        message: "ID phòng không hợp lệ",
       });
     }
 
     // Kiểm tra phòng có tồn tại không
     const [roomExists] = await pool.query<RowDataPacket[]>(
-      'SELECT id, roomNumber, buildingId FROM rooms WHERE id = ?',
+      "SELECT id, roomNumber, buildingId FROM rooms WHERE id = ?",
       [roomId]
     );
 
     if (!roomExists.length) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy phòng'
+        message: "Không tìm thấy phòng",
       });
     }
 
@@ -827,21 +877,24 @@ export const addMaintenance = async (req: Request, res: Response) => {
     if (!requestType || !description) {
       return res.status(400).json({
         success: false,
-        message: 'Thiếu thông tin bắt buộc: loại yêu cầu, mô tả'
+        message: "Thiếu thông tin bắt buộc: loại yêu cầu, mô tả",
       });
     }
 
     // Get building name for logging
     const [buildingResult] = await pool.query<RowDataPacket[]>(
-      'SELECT name FROM buildings WHERE id = ?',
+      "SELECT name FROM buildings WHERE id = ?",
       [roomExists[0].buildingId]
     );
 
-    const buildingName = buildingResult.length > 0 ? buildingResult[0].name : 'Unknown';
+    const buildingName =
+      buildingResult.length > 0 ? buildingResult[0].name : "Unknown";
     const roomNumber = roomExists[0].roomNumber;
 
     // Tạo requestNumber
-    const requestNumber = `MR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const requestNumber = `MR-${Date.now()}-${Math.floor(
+      Math.random() * 1000
+    )}`;
 
     // Xử lý upload nhiều ảnh
     const uploadedImages: string[] = [];
@@ -851,12 +904,12 @@ export const addMaintenance = async (req: Request, res: Response) => {
           // Kiểm tra kích thước file (giới hạn 5MB)
           const MAX_FILE_SIZE = 5 * 1024 * 1024;
           if (file.size > MAX_FILE_SIZE) {
-            throw new Error('Kích thước file không được vượt quá 5MB');
+            throw new Error("Kích thước file không được vượt quá 5MB");
           }
 
           // Kiểm tra mime type
-          if (!file.mimetype.startsWith('image/')) {
-            throw new Error('File phải là hình ảnh');
+          if (!file.mimetype.startsWith("image/")) {
+            throw new Error("File phải là hình ảnh");
           }
 
           const buffer = file.buffer || fs.readFileSync(file.path);
@@ -865,7 +918,12 @@ export const addMaintenance = async (req: Request, res: Response) => {
           const filename = `maintenance-${roomId}-${timestamp}${ext}`;
 
           // Upload ảnh
-          const imagePath = await FilesService.singleUpload(buffer, filename, 'maintenance', true);
+          const imagePath = await FilesService.singleUpload(
+            buffer,
+            filename,
+            "maintenance",
+            true
+          );
           const imageUrl = await FilesService.getSignedUrl(imagePath, true);
 
           uploadedImages.push(imageUrl);
@@ -875,7 +933,7 @@ export const addMaintenance = async (req: Request, res: Response) => {
             fs.unlinkSync(file.path);
           }
         } catch (uploadError) {
-          console.error('Error uploading image:', uploadError);
+          console.error("Error uploading image:", uploadError);
           // Tiếp tục với file tiếp theo nếu có lỗi với file hiện tại
         }
       }
@@ -893,10 +951,10 @@ export const addMaintenance = async (req: Request, res: Response) => {
         studentId || null,
         requestType,
         description,
-        'normal',
-        'pending',
+        "normal",
+        "pending",
         new Date(),
-        JSON.stringify(uploadedImages) // Lưu vào trường imagePaths
+        JSON.stringify(uploadedImages), // Lưu vào trường imagePaths
       ]
     );
 
@@ -906,26 +964,34 @@ export const addMaintenance = async (req: Request, res: Response) => {
     if (req.user?.id) {
       await activityLogService.logActivity(
         req.user.id,
-        'create',
-        'maintenance',
+        "create",
+        "maintenance",
         maintenanceId,
         `Tạo yêu cầu bảo trì cho Phòng ${roomNumber} tại tòa nhà ${buildingName}: ${requestType}`,
-        req
+        req,
+        Number(roomId),
+        undefined,
+        undefined,
+        undefined
       );
 
       await activityLogService.logActivity(
         req.user.id,
-        'create',
-        'room',
+        "create",
+        "room",
         roomId,
         `Tạo yêu cầu bảo trì cho Phòng ${roomNumber} tại tòa nhà ${buildingName}: ${requestType}`,
-        req
+        req,
+        Number(roomId),
+        undefined,
+        undefined,
+        undefined
       );
     }
 
     res.status(201).json({
       success: true,
-      message: 'Thêm yêu cầu bảo trì thành công',
+      message: "Thêm yêu cầu bảo trì thành công",
       data: {
         id: maintenanceId,
         requestNumber,
@@ -933,23 +999,25 @@ export const addMaintenance = async (req: Request, res: Response) => {
         studentId: studentId || null,
         requestType,
         description,
-        status: 'pending',
+        status: "pending",
         createdAt: new Date(),
-        imagePaths: uploadedImages // Trả về với tên trường imagePaths
-      }
+        imagePaths: uploadedImages, // Trả về với tên trường imagePaths
+      },
     });
-
   } catch (error: any) {
-    console.error('Error adding maintenance:', error);
+    console.error("Error adding maintenance:", error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi thêm yêu cầu bảo trì',
-      error: error.message
+      message: "Lỗi khi thêm yêu cầu bảo trì",
+      error: error.message,
     });
   }
 };
 
-export const processMaintenanceRequest = async (req: Request, res: Response) => {
+export const processMaintenanceRequest = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const requestId = parseInt(req.params.requestId);
     const { status } = req.body;
@@ -957,7 +1025,7 @@ export const processMaintenanceRequest = async (req: Request, res: Response) => 
     if (isNaN(requestId)) {
       return res.status(400).json({
         success: false,
-        message: 'ID yêu cầu không hợp lệ'
+        message: "ID yêu cầu không hợp lệ",
       });
     }
 
@@ -974,7 +1042,7 @@ export const processMaintenanceRequest = async (req: Request, res: Response) => 
     if (requestResult.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy yêu cầu bảo trì'
+        message: "Không tìm thấy yêu cầu bảo trì",
       });
     }
 
@@ -983,7 +1051,7 @@ export const processMaintenanceRequest = async (req: Request, res: Response) => 
 
     // Chỉ cập nhật trạng thái, bỏ hết các trường khác
     await pool.query(
-      'UPDATE maintenance_requests SET status = ? WHERE id = ?',
+      "UPDATE maintenance_requests SET status = ? WHERE id = ?",
       [status, requestId]
     );
 
@@ -991,34 +1059,42 @@ export const processMaintenanceRequest = async (req: Request, res: Response) => 
     if (req.user?.id) {
       await activityLogService.logActivity(
         req.user.id,
-        'status_change',
-        'maintenance',
+        "status_change",
+        "maintenance",
         requestId,
         `Cập nhật trạng thái yêu cầu bảo trì: ${previousStatus} -> ${status} cho Phòng ${maintenanceRequest.roomNumber} tại tòa nhà ${maintenanceRequest.buildingName}`,
-        req
+        req,
+        Number(maintenanceRequest.roomId),
+        undefined,
+        undefined,
+        undefined
       );
 
       // Add log for room entity to ensure it appears in room timeline
       await activityLogService.logActivity(
         req.user.id,
-        'status_change',
-        'room',
+        "status_change",
+        "room",
         maintenanceRequest.roomId,
         `Cập nhật trạng thái yêu cầu bảo trì: ${previousStatus} -> ${status} cho Phòng ${maintenanceRequest.roomNumber} tại tòa nhà ${maintenanceRequest.buildingName}`,
-        req
+        req,
+        Number(maintenanceRequest.roomId),
+        undefined,
+        undefined,
+        undefined
       );
     }
 
     return res.json({
       success: true,
-      message: 'Cập nhật trạng thái yêu cầu thành công'
+      message: "Cập nhật trạng thái yêu cầu thành công",
     });
   } catch (error: any) {
-    console.error('Error processing maintenance request:', error);
+    console.error("Error processing maintenance request:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi xử lý yêu cầu bảo trì',
-      error: error.message
+      message: "Lỗi khi xử lý yêu cầu bảo trì",
+      error: error.message,
     });
   }
 };
@@ -1031,20 +1107,20 @@ export const addUtility = async (req: Request, res: Response) => {
     if (isNaN(roomId)) {
       return res.status(400).json({
         success: false,
-        message: 'ID phòng không hợp lệ'
+        message: "ID phòng không hợp lệ",
       });
     }
 
     // Kiểm tra phòng có tồn tại không và lấy thông tin phí phòng
     const [roomData] = await pool.query<RowDataPacket[]>(
-      'SELECT id, pricePerMonth, roomNumber, buildingId FROM rooms WHERE id = ?',
+      "SELECT id, pricePerMonth, roomNumber, buildingId FROM rooms WHERE id = ?",
       [roomId]
     );
 
     if (!roomData.length) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy phòng'
+        message: "Không tìm thấy phòng",
       });
     }
 
@@ -1053,11 +1129,12 @@ export const addUtility = async (req: Request, res: Response) => {
 
     // Get building name for logging
     const [buildingResult] = await pool.query<RowDataPacket[]>(
-      'SELECT name FROM buildings WHERE id = ?',
+      "SELECT name FROM buildings WHERE id = ?",
       [roomData[0].buildingId]
     );
 
-    const buildingName = buildingResult.length > 0 ? buildingResult[0].name : 'Unknown';
+    const buildingName =
+      buildingResult.length > 0 ? buildingResult[0].name : "Unknown";
 
     const {
       month,
@@ -1068,14 +1145,14 @@ export const addUtility = async (req: Request, res: Response) => {
       otherFees,
       dueDate,
       status,
-      paidDate
+      paidDate,
     } = req.body;
 
     // Validate required fields
     if (!month || electricityCost === undefined || waterCost === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'Thiếu thông tin bắt buộc: tháng, chi phí điện, chi phí nước'
+        message: "Thiếu thông tin bắt buộc: tháng, chi phí điện, chi phí nước",
       });
     }
 
@@ -1088,17 +1165,19 @@ export const addUtility = async (req: Request, res: Response) => {
 
     // Parse tháng thành đối tượng ngày
     // Định dạng dự kiến: MM/YYYY
-    const [monthPart, yearPart] = month.split('/');
+    const [monthPart, yearPart] = month.split("/");
     const invoiceMonth = new Date();
     invoiceMonth.setMonth(parseInt(monthPart) - 1);
     invoiceMonth.setFullYear(parseInt(yearPart));
     invoiceMonth.setDate(1); // Ngày 1 của tháng
 
     // Tạo invoiceNumber
-    const invoiceNumber = `INV-${roomId}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const invoiceNumber = `INV-${roomId}-${Date.now()}-${Math.floor(
+      Math.random() * 1000
+    )}`;
 
     // Sử dụng 'pending' thay vì 'unpaid' vì ENUM chỉ chấp nhận 'pending', 'paid', 'overdue'
-    const paymentStatus = status || 'pending';
+    const paymentStatus = status || "pending";
 
     // Nếu không có ngày đến hạn, đặt là 15 ngày sau ngày đầu tháng
     const defaultDueDate = new Date(invoiceMonth);
@@ -1106,7 +1185,7 @@ export const addUtility = async (req: Request, res: Response) => {
 
     // Xử lý ngày thanh toán
     let paymentDateValue = null;
-    if (paymentStatus === 'paid') {
+    if (paymentStatus === "paid") {
       paymentDateValue = paidDate ? new Date(paidDate) : new Date();
     }
 
@@ -1127,7 +1206,7 @@ export const addUtility = async (req: Request, res: Response) => {
         totalAmount,
         dueDate ? new Date(dueDate) : defaultDueDate,
         paymentStatus,
-        paymentDateValue
+        paymentDateValue,
       ]
     );
 
@@ -1135,17 +1214,23 @@ export const addUtility = async (req: Request, res: Response) => {
     if (req.user?.id) {
       await activityLogService.logActivity(
         req.user.id,
-        'create',
-        'invoice',
+        "create",
+        "invoice",
         result.insertId,
-        `Tạo hóa đơn tiện ích cho Phòng ${roomNumber} tại tòa nhà ${buildingName} tháng ${month}: ${totalAmount.toLocaleString('vi-VN')} VNĐ`,
-        req
+        `Tạo hóa đơn tiện ích cho Phòng ${roomNumber} tại tòa nhà ${buildingName} tháng ${month}: ${totalAmount.toLocaleString(
+          "vi-VN"
+        )} VNĐ`,
+        req,
+        Number(roomId),
+        undefined,
+        undefined,
+        undefined
       );
     }
 
     res.status(201).json({
       success: true,
-      message: 'Thêm hóa đơn tiện ích thành công',
+      message: "Thêm hóa đơn tiện ích thành công",
       data: {
         id: result.insertId,
         invoiceNumber,
@@ -1157,16 +1242,15 @@ export const addUtility = async (req: Request, res: Response) => {
         otherFees: otherFees || 0,
         totalAmount,
         paymentStatus,
-        paidDate: paymentDateValue
-      }
+        paidDate: paymentDateValue,
+      },
     });
-
   } catch (error: any) {
-    console.error('Error adding utility:', error);
+    console.error("Error adding utility:", error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi thêm hóa đơn tiện ích',
-      error: error.message
+      message: "Lỗi khi thêm hóa đơn tiện ích",
+      error: error.message,
     });
   }
 };
@@ -1180,7 +1264,7 @@ export const removeResident = async (req: Request, res: Response) => {
     if (isNaN(roomId) || isNaN(residentId)) {
       return res.status(400).json({
         success: false,
-        message: 'ID phòng hoặc ID sinh viên không hợp lệ'
+        message: "ID phòng hoặc ID sinh viên không hợp lệ",
       });
     }
 
@@ -1195,7 +1279,8 @@ export const removeResident = async (req: Request, res: Response) => {
     if (!contractExists.length) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy sinh viên trong phòng này hoặc hợp đồng không còn hiệu lực'
+        message:
+          "Không tìm thấy sinh viên trong phòng này hoặc hợp đồng không còn hiệu lực",
       });
     }
 
@@ -1214,25 +1299,25 @@ export const removeResident = async (req: Request, res: Response) => {
     if (!studentRoomInfo.length) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy thông tin sinh viên hoặc phòng'
+        message: "Không tìm thấy thông tin sinh viên hoặc phòng",
       });
     }
 
     const { studentName, roomNumber, buildingName } = studentRoomInfo[0];
 
     // Bắt đầu transaction
-    await pool.query('START TRANSACTION');
+    await pool.query("START TRANSACTION");
 
     try {
       // Cập nhật trạng thái hợp đồng
       await pool.query(
-        'UPDATE contracts SET status = ?, endDate = ? WHERE id = ?',
-        ['terminated', new Date(), contractId]
+        "UPDATE contracts SET status = ?, endDate = ? WHERE id = ?",
+        ["terminated", new Date(), contractId]
       );
 
       // Cập nhật số người ở phòng
       await pool.query(
-        'UPDATE rooms SET currentOccupancy = currentOccupancy - 1 WHERE id = ?',
+        "UPDATE rooms SET currentOccupancy = currentOccupancy - 1 WHERE id = ?",
         [roomId]
       );
 
@@ -1247,8 +1332,8 @@ export const removeResident = async (req: Request, res: Response) => {
         // Log for student entity
         await activityLogService.logActivity(
           req.user.id,
-          'remove',
-          'student',
+          "remove",
+          "student",
           residentId,
           `Xóa sinh viên ${studentName} khỏi Phòng ${roomNumber} tại tòa nhà ${buildingName}`,
           req
@@ -1257,8 +1342,8 @@ export const removeResident = async (req: Request, res: Response) => {
         // Log for room entity - ensures it shows up in room timeline
         await activityLogService.logActivity(
           req.user.id,
-          'remove',
-          'room',
+          "remove",
+          "room",
           roomId,
           `Xóa sinh viên ${studentName} khỏi Phòng ${roomNumber} tại tòa nhà ${buildingName}`,
           req
@@ -1266,27 +1351,27 @@ export const removeResident = async (req: Request, res: Response) => {
       }
 
       // Commit transaction
-      await pool.query('COMMIT');
+      await pool.query("COMMIT");
 
       res.json({
         success: true,
-        message: 'Đã xóa sinh viên khỏi phòng thành công',
+        message: "Đã xóa sinh viên khỏi phòng thành công",
         data: {
           roomId,
-          residentId
-        }
+          residentId,
+        },
       });
     } catch (err) {
       // Rollback transaction nếu có lỗi
-      await pool.query('ROLLBACK');
+      await pool.query("ROLLBACK");
       throw err;
     }
   } catch (error: any) {
-    console.error('Error removing resident:', error);
+    console.error("Error removing resident:", error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi xóa sinh viên khỏi phòng',
-      error: error.message
+      message: "Lỗi khi xóa sinh viên khỏi phòng",
+      error: error.message,
     });
   }
 };
@@ -1303,7 +1388,7 @@ export const getRoomTimeline = async (req: Request, res: Response) => {
     if (!roomId) {
       return res.status(400).json({
         success: false,
-        message: 'Room ID is required'
+        message: "Room ID is required",
       });
     }
 
@@ -1338,12 +1423,14 @@ export const getRoomTimeline = async (req: Request, res: Response) => {
     `;
 
     const roomNumberQuery = `SELECT roomNumber FROM rooms WHERE id = ?`;
-    const [roomResult] = await pool.query<RowDataPacket[]>(roomNumberQuery, [roomId]);
+    const [roomResult] = await pool.query<RowDataPacket[]>(roomNumberQuery, [
+      roomId,
+    ]);
 
     if (!roomResult || roomResult.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Room not found'
+        message: "Room not found",
       });
     }
 
@@ -1351,13 +1438,16 @@ export const getRoomTimeline = async (req: Request, res: Response) => {
     const searchParam = `%Room ${roomNumber}%`;
 
     // Execute the query with parameters
-    const [timelineRows] = await pool.query<RowDataPacket[]>(
-      timelineQuery,
-      [roomId, searchParam, searchParam, searchParam, searchParam]
-    );
+    const [timelineRows] = await pool.query<RowDataPacket[]>(timelineQuery, [
+      roomId,
+      searchParam,
+      searchParam,
+      searchParam,
+      searchParam,
+    ]);
 
     // Format the timeline data
-    const timeline = timelineRows.map(row => ({
+    const timeline = timelineRows.map((row) => ({
       id: row.id,
       action: row.action,
       entityType: row.entityType,
@@ -1366,43 +1456,47 @@ export const getRoomTimeline = async (req: Request, res: Response) => {
       timestamp: row.createdAt,
       userName: row.userName,
       userType: row.userType,
-      userAvatar: row.userType === 'admin' ? row.adminAvatar : row.studentAvatar
+      userAvatar:
+        row.userType === "admin" ? row.adminAvatar : row.studentAvatar,
     }));
 
     return res.status(200).json({
       success: true,
-      data: timeline
+      data: timeline,
     });
   } catch (error: any) {
-    console.error('Error fetching room timeline:', error);
+    console.error("Error fetching room timeline:", error);
     return res.status(500).json({
       success: false,
-      message: 'Error fetching room timeline',
-      error: error.message
+      message: "Error fetching room timeline",
+      error: error.message,
     });
   }
 };
 
 // Get maintenance requests for a student
-export const getStudentMaintenanceRequests = async (req: Request, res: Response) => {
+export const getStudentMaintenanceRequests = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const studentId = parseInt(req.params.studentId);
 
     if (isNaN(studentId)) {
       return res.status(400).json({
         success: false,
-        message: 'ID sinh viên không hợp lệ'
+        message: "ID sinh viên không hợp lệ",
       });
     }
 
     // Check if user has permission (admin or the student themself)
-    const isAdmin = req.user?.userType === 'admin';
+    const isAdmin = req.user?.userType === "admin";
     const isOwnRequest = req.user?.id === studentId;
 
     if (!isAdmin && !isOwnRequest) {
       return res.status(403).json({
         success: false,
-        message: 'Bạn không có quyền xem thông tin này'
+        message: "Bạn không có quyền xem thông tin này",
       });
     }
 
@@ -1425,39 +1519,42 @@ export const getStudentMaintenanceRequests = async (req: Request, res: Response)
     const requestsWithImages = await Promise.all(
       requests.map(async (request) => {
         const [images] = await pool.query<RowDataPacket[]>(
-          'SELECT imagePath FROM maintenance_request_images WHERE requestId = ?',
+          "SELECT imagePath FROM maintenance_request_images WHERE requestId = ?",
           [request.id]
         );
 
         return {
           ...request,
-          imagePaths: images.map(img => img.imagePath),
+          imagePaths: images.map((img) => img.imagePath),
         };
       })
     );
 
     return res.status(200).json({
       success: true,
-      data: requestsWithImages
+      data: requestsWithImages,
     });
   } catch (error) {
-    console.error('Error fetching student maintenance requests:', error);
+    console.error("Error fetching student maintenance requests:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi lấy danh sách yêu cầu bảo trì'
+      message: "Lỗi khi lấy danh sách yêu cầu bảo trì",
     });
   }
 };
 
 // Get maintenance requests for a room
-export const getRoomMaintenanceRequests = async (req: Request, res: Response) => {
+export const getRoomMaintenanceRequests = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const roomId = parseInt(req.params.roomId);
 
     if (isNaN(roomId)) {
       return res.status(400).json({
         success: false,
-        message: 'ID phòng không hợp lệ'
+        message: "ID phòng không hợp lệ",
       });
     }
 
@@ -1483,16 +1580,16 @@ export const getRoomMaintenanceRequests = async (req: Request, res: Response) =>
     if (!requests || requests.length === 0) {
       return res.status(200).json({
         success: true,
-        data: []
+        data: [],
       });
     }
 
     // Parse imagePaths từ JSON string thành array với xử lý lỗi cẩn thận hơn
-    const requestsWithImages = requests.map(request => {
+    const requestsWithImages = requests.map((request) => {
       try {
-        console.log('Raw imagePaths:', request.imagePaths); // Log để debug
+        console.log("Raw imagePaths:", request.imagePaths); // Log để debug
         let parsedImagePaths = [];
-        
+
         if (request.imagePaths) {
           // Kiểm tra nếu đã là array thì không cần parse
           if (Array.isArray(request.imagePaths)) {
@@ -1501,7 +1598,7 @@ export const getRoomMaintenanceRequests = async (req: Request, res: Response) =>
             try {
               parsedImagePaths = JSON.parse(request.imagePaths);
             } catch (parseError) {
-              console.error('Error parsing imagePaths:', parseError);
+              console.error("Error parsing imagePaths:", parseError);
               // Nếu là string đơn, wrap nó trong array
               parsedImagePaths = [request.imagePaths];
             }
@@ -1510,28 +1607,27 @@ export const getRoomMaintenanceRequests = async (req: Request, res: Response) =>
 
         return {
           ...request,
-          imagePaths: parsedImagePaths
+          imagePaths: parsedImagePaths,
         };
       } catch (error) {
-        console.error('Error processing request:', error);
+        console.error("Error processing request:", error);
         return {
           ...request,
-          imagePaths: []
+          imagePaths: [],
         };
       }
     });
 
     return res.status(200).json({
       success: true,
-      data: requestsWithImages
+      data: requestsWithImages,
     });
-
   } catch (error) {
-    console.error('Error fetching room maintenance requests:', error);
+    console.error("Error fetching room maintenance requests:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi lấy danh sách yêu cầu bảo trì',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Lỗi khi lấy danh sách yêu cầu bảo trì",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -1544,7 +1640,7 @@ export const cancelMaintenanceRequest = async (req: Request, res: Response) => {
     if (isNaN(requestId)) {
       return res.status(400).json({
         success: false,
-        message: 'ID yêu cầu không hợp lệ'
+        message: "ID yêu cầu không hợp lệ",
       });
     }
 
@@ -1561,15 +1657,15 @@ export const cancelMaintenanceRequest = async (req: Request, res: Response) => {
     if (requestInfo.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy yêu cầu bảo trì'
+        message: "Không tìm thấy yêu cầu bảo trì",
       });
     }
 
     // Check if request can be canceled (only pending requests can be canceled)
-    if (requestInfo[0].status !== 'pending') {
+    if (requestInfo[0].status !== "pending") {
       return res.status(400).json({
         success: false,
-        message: 'Chỉ những yêu cầu đang chờ xử lý mới có thể bị hủy'
+        message: "Chỉ những yêu cầu đang chờ xử lý mới có thể bị hủy",
       });
     }
 
@@ -1583,23 +1679,27 @@ export const cancelMaintenanceRequest = async (req: Request, res: Response) => {
     if (req.user?.id) {
       await activityLogService.logActivity(
         req.user.id,
-        'cancel',
-        'maintenance',
+        "cancel",
+        "maintenance",
         requestId,
         `Hủy yêu cầu bảo trì cho Phòng ${requestInfo[0].roomNumber} tại tòa nhà ${requestInfo[0].buildingName}`,
-        req
+        req,
+        Number(requestInfo[0].roomId),
+        undefined,
+        undefined,
+        req.user.id
       );
     }
 
     return res.status(200).json({
       success: true,
-      message: 'Hủy yêu cầu bảo trì thành công'
+      message: "Hủy yêu cầu bảo trì thành công",
     });
   } catch (error) {
-    console.error('Error canceling maintenance request:', error);
+    console.error("Error canceling maintenance request:", error);
     return res.status(500).json({
       success: false,
-      message: 'Lỗi khi hủy yêu cầu bảo trì'
+      message: "Lỗi khi hủy yêu cầu bảo trì",
     });
   }
 };

@@ -1,18 +1,18 @@
-import { RequestHandler } from 'express';
-import { StudentService } from '../services/studentService';
-import fs from 'fs';
-import pool from '../config/database';
-import { RowDataPacket, OkPacket } from 'mysql2';
-import activityLogService from '../services/activityLogService';
-import FilesService from '../services/FilesService';
-import path from 'path';
+import { RequestHandler } from "express";
+import { StudentService } from "../services/studentService";
+import fs from "fs";
+import pool from "../config/database";
+import { RowDataPacket, OkPacket } from "mysql2";
+import activityLogService from "../services/activityLogService";
+import FilesService from "../services/FilesService";
+import path from "path";
 
 interface CreateStudentRequest {
   email: string;
   studentCode: string;
   fullName: string;
   birthDate: Date;
-  gender: 'male' | 'female' | 'other';
+  gender: "male" | "female" | "other";
   phone: string;
   province: string;
   district: string;
@@ -41,22 +41,36 @@ export class StudentController {
         address: req.body.address,
         faculty: req.body.faculty,
         major: req.body.major,
-        className: req.body.className
+        className: req.body.className,
       };
 
       // Validate required fields
       const requiredFields = [
-        'email', 'studentCode', 'fullName', 'birthDate', 'gender',
-        'phone', 'province', 'district', 'ward',
-        'address', 'faculty', 'major', 'className'
+        "email",
+        "studentCode",
+        "fullName",
+        "birthDate",
+        "gender",
+        "phone",
+        "province",
+        "district",
+        "ward",
+        "address",
+        "faculty",
+        "major",
+        "className",
       ];
 
-      const missingFields = requiredFields.filter(field => !data[field as keyof CreateStudentRequest]);
+      const missingFields = requiredFields.filter(
+        (field) => !data[field as keyof CreateStudentRequest]
+      );
 
       if (missingFields.length > 0) {
         res.status(400).json({
           success: false,
-          message: `Vui lòng điền đầy đủ thông tin: ${missingFields.join(', ')}`
+          message: `Vui lòng điền đầy đủ thông tin: ${missingFields.join(
+            ", "
+          )}`,
         });
         return;
       }
@@ -66,16 +80,16 @@ export class StudentController {
       if (!phoneRegex.test(data.phone)) {
         res.status(400).json({
           success: false,
-          message: 'Số điện thoại không hợp lệ (phải có 10 chữ số)'
+          message: "Số điện thoại không hợp lệ (phải có 10 chữ số)",
         });
         return;
       }
 
       // Validate gender
-      if (!['male', 'female', 'other'].includes(data.gender)) {
+      if (!["male", "female", "other"].includes(data.gender)) {
         res.status(400).json({
           success: false,
-          message: 'Giới tính không hợp lệ'
+          message: "Giới tính không hợp lệ",
         });
         return;
       }
@@ -92,12 +106,12 @@ export class StudentController {
 
         // Get the student ID from the user ID
         const [studentResult] = await pool.query<RowDataPacket[]>(
-          'SELECT id FROM students WHERE userId = ?',
+          "SELECT id FROM students WHERE userId = ?",
           [userResult.id]
         );
 
         if (studentResult.length === 0) {
-          throw new Error('Failed to retrieve student ID after creation');
+          throw new Error("Failed to retrieve student ID after creation");
         }
 
         studentId = studentResult[0].id;
@@ -109,7 +123,12 @@ export class StudentController {
             const filename = req.file.originalname;
 
             // Upload the file to cloud storage
-            avatarPath = await FilesService.singleUpload(buffer, filename, 'students', true);
+            avatarPath = await FilesService.singleUpload(
+              buffer,
+              filename,
+              "students",
+              true
+            );
 
             // Get the signed URL for the uploaded file
             avatarUrl = await FilesService.getSignedUrl(avatarPath, true);
@@ -121,11 +140,11 @@ export class StudentController {
 
             // Update the student with the avatar path and URL
             await pool.query(
-              'UPDATE students SET avatarPath = ? WHERE id = ?',
+              "UPDATE students SET avatarPath = ? WHERE id = ?",
               [avatarUrl, studentId]
             );
           } catch (error) {
-            console.error('Error uploading avatar:', error);
+            console.error("Error uploading avatar:", error);
             // Continue with the process even if avatar upload fails
           }
         }
@@ -134,8 +153,8 @@ export class StudentController {
         if (req.user?.id) {
           await activityLogService.logActivity(
             req.user.id,
-            'create',
-            'student',
+            "create",
+            "student",
             studentId,
             `Created student: ${data.fullName} (${data.studentCode})`,
             req
@@ -144,22 +163,21 @@ export class StudentController {
 
         res.status(201).json({
           success: true,
-          message: 'Đăng ký thành công, vui lòng chờ admin phê duyệt',
+          message: "Đăng ký thành công, vui lòng chờ admin phê duyệt",
           data: {
             ...userResult,
             studentId,
             ...(avatarPath && { avatarPath }),
-            ...(avatarUrl && { avatarUrl })
-          }
+            ...(avatarUrl && { avatarUrl }),
+          },
         });
       } catch (error) {
         throw error;
       }
-
     } catch (error) {
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Lỗi tạo sinh viên'
+        message: error instanceof Error ? error.message : "Lỗi tạo sinh viên",
       });
     }
   };
@@ -178,8 +196,8 @@ export class StudentController {
       if (req.user?.id) {
         await activityLogService.logActivity(
           req.user.id,
-          'update',
-          'student',
+          "update",
+          "student",
           studentId,
           `Activated student account: ${student.fullName} (${student.studentCode})`,
           req
@@ -188,13 +206,13 @@ export class StudentController {
 
       res.json({
         success: true,
-        message: 'Kích hoạt tài khoản thành công'
+        message: "Kích hoạt tài khoản thành công",
       });
-
     } catch (error) {
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Lỗi kích hoạt tài khoản'
+        message:
+          error instanceof Error ? error.message : "Lỗi kích hoạt tài khoản",
       });
     }
   };
@@ -213,8 +231,8 @@ export class StudentController {
       if (req.user?.id) {
         await activityLogService.logActivity(
           req.user.id,
-          'update',
-          'student',
+          "update",
+          "student",
           studentId,
           `Rejected student account: ${student.fullName} (${student.studentCode})`,
           req
@@ -223,12 +241,13 @@ export class StudentController {
 
       res.json({
         success: true,
-        message: 'Từ chối tài khoản thành công'
+        message: "Từ chối tài khoản thành công",
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Lỗi từ chối tài khoản'
+        message:
+          error instanceof Error ? error.message : "Lỗi từ chối tài khoản",
       });
     }
   };
@@ -237,11 +256,15 @@ export class StudentController {
     try {
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 10;
-      const search = (req.query.search as string) || '';
+      const search = (req.query.search as string) || "";
 
-      console.log('Controller received:', { page, limit, search }); // Debug log
+      console.log("Controller received:", { page, limit, search }); // Debug log
 
-      const { students, total } = await StudentService.getAllStudents(page, limit, search);
+      const { students, total } = await StudentService.getAllStudents(
+        page,
+        limit,
+        search
+      );
 
       const totalPages = Math.ceil(total / limit);
 
@@ -252,13 +275,16 @@ export class StudentController {
           currentPage: page,
           totalPages,
           totalItems: total,
-          itemsPerPage: limit
-        }
+          itemsPerPage: limit,
+        },
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Lỗi lấy danh sách sinh viên'
+        message:
+          error instanceof Error
+            ? error.message
+            : "Lỗi lấy danh sách sinh viên",
       });
     }
   };
@@ -269,12 +295,15 @@ export class StudentController {
       const student = await StudentService.getStudentById(Number(id));
       res.json({
         success: true,
-        data: student
+        data: student,
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Lỗi lấy thông tin sinh viên'
+        message:
+          error instanceof Error
+            ? error.message
+            : "Lỗi lấy thông tin sinh viên",
       });
     }
   };
@@ -285,15 +314,15 @@ export class StudentController {
       const studentId = Number(id);
 
       // Kiểm tra quyền truy cập: admin có thể xem tất cả, sinh viên chỉ có thể xem thông tin của mình
-      const isAdmin = req.user?.userType === 'admin';
+      const isAdmin = req.user?.userType === "admin";
 
       // For student users, first get their student profile ID to compare
       let isOwnProfile = false;
 
-      if (req.user?.userType === 'student') {
+      if (req.user?.userType === "student") {
         // If student user, check if they are looking at their own profile
         const [studentRecord] = await pool.query<RowDataPacket[]>(
-          'SELECT id FROM students WHERE userId = ?',
+          "SELECT id FROM students WHERE userId = ?",
           [req.user?.id || 0]
         );
 
@@ -305,7 +334,7 @@ export class StudentController {
       if (!isAdmin && !isOwnProfile) {
         res.status(403).json({
           success: false,
-          message: 'Bạn không có quyền xem thông tin này'
+          message: "Bạn không có quyền xem thông tin này",
         });
         return;
       }
@@ -314,7 +343,8 @@ export class StudentController {
       const student = await StudentService.getStudentById(studentId);
 
       // Get dormitory information from contracts or rooms
-      const [dormitory] = await pool.query<RowDataPacket[]>(`
+      const [dormitory] = await pool.query<RowDataPacket[]>(
+        `
         SELECT 
           c.id as contractId,
           r.id as roomId,
@@ -335,10 +365,13 @@ export class StudentController {
         JOIN buildings b ON r.buildingId = b.id
         WHERE c.studentId = ? AND c.status = 'active'
         LIMIT 1
-      `, [studentId]);
+      `,
+        [studentId]
+      );
 
       // Get history records
-      const [history] = await pool.query<RowDataPacket[]>(`
+      const [history] = await pool.query<RowDataPacket[]>(
+        `
         SELECT 
           al.id,
           al.action,
@@ -350,21 +383,29 @@ export class StudentController {
         WHERE al.entityType = 'student' AND al.entityId = ?
         ORDER BY al.createdAt DESC
         LIMIT 10
-      `, [studentId]);
+      `,
+        [studentId]
+      );
 
       // If there's no history yet, add basic registration entry
-      const historyItems = history.length > 0 ? history : [{
-        id: 1,
-        action: 'register',
-        description: 'Đăng ký ký túc xá',
-        date: student.createdAt,
-        user: student.email
-      }];
+      const historyItems =
+        history.length > 0
+          ? history
+          : [
+              {
+                id: 1,
+                action: "register",
+                description: "Đăng ký ký túc xá",
+                date: student.createdAt,
+                user: student.email,
+              },
+            ];
 
       // Get roommates if student has a dormitory
       let roommates: RowDataPacket[] = [];
       if (dormitory && dormitory.length > 0 && dormitory[0].roomId) {
-        const [roommatResults] = await pool.query<RowDataPacket[]>(`
+        const [roommatResults] = await pool.query<RowDataPacket[]>(
+          `
           SELECT 
             s.id,
             s.studentCode,
@@ -375,7 +416,9 @@ export class StudentController {
           FROM contracts c
           JOIN students s ON c.studentId = s.id
           WHERE c.roomId = ? AND c.studentId != ? AND c.status = 'active'
-        `, [dormitory[0].roomId, studentId]);
+        `,
+          [dormitory[0].roomId, studentId]
+        );
 
         roommates = roommatResults;
       }
@@ -386,14 +429,17 @@ export class StudentController {
           student,
           dormitory: dormitory && dormitory.length > 0 ? dormitory[0] : {},
           history: historyItems,
-          roommates: roommates || []
-        }
+          roommates: roommates || [],
+        },
       });
     } catch (error) {
-      console.error('Error fetching student details:', error);
+      console.error("Error fetching student details:", error);
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Lỗi lấy thông tin chi tiết sinh viên'
+        message:
+          error instanceof Error
+            ? error.message
+            : "Lỗi lấy thông tin chi tiết sinh viên",
       });
     }
   };
@@ -405,12 +451,13 @@ export class StudentController {
       await StudentService.updateStudentStatus(Number(id), status);
       res.json({
         success: true,
-        message: 'Cập nhật trạng thái thành công'
+        message: "Cập nhật trạng thái thành công",
       });
     } catch (error) {
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Lỗi cập nhật trạng thái'
+        message:
+          error instanceof Error ? error.message : "Lỗi cập nhật trạng thái",
       });
     }
   };
@@ -425,20 +472,20 @@ export class StudentController {
         semester,
         schoolYear,
         monthlyFee,
-        depositAmount
+        depositAmount,
       } = req.body;
 
       // Validate required fields
       if (!roomId) {
         res.status(400).json({
           success: false,
-          message: 'Vui lòng chọn phòng'
+          message: "Vui lòng chọn phòng",
         });
         return;
       }
 
       // Start transaction
-      await pool.query('START TRANSACTION');
+      await pool.query("START TRANSACTION");
 
       try {
         // Kiểm tra trạng thái sinh viên
@@ -448,11 +495,11 @@ export class StudentController {
         );
 
         if (!studentStatus.length) {
-          throw new Error('Không tìm thấy sinh viên');
+          throw new Error("Không tìm thấy sinh viên");
         }
 
         // Nếu sinh viên chưa được phê duyệt, cập nhật trạng thái
-        if (studentStatus[0].status !== 'active') {
+        if (studentStatus[0].status !== "active") {
           // Cập nhật trạng thái sinh viên
           await pool.query(
             `UPDATE students SET status = 'active' WHERE id = ?`,
@@ -478,84 +525,102 @@ export class StudentController {
         }
 
         // Check if student already has an active contract
-        const [existingContract] = await pool.query<RowDataPacket[]>(`
+        const [existingContract] = await pool.query<RowDataPacket[]>(
+          `
           SELECT id FROM contracts WHERE studentId = ? AND status = 'active'
-        `, [id]);
+        `,
+          [id]
+        );
 
         let contractId;
 
         if (existingContract.length > 0) {
           // Update existing contract
           contractId = existingContract[0].id;
-          await pool.query(`
+          await pool.query(
+            `
             UPDATE contracts
             SET roomId = ?, monthlyFee = ?, depositAmount = ?
             WHERE id = ?
-          `, [roomId, monthlyFee, depositAmount, contractId]);
+          `,
+            [roomId, monthlyFee, depositAmount, contractId]
+          );
         } else {
           // Create new contract
           const startDate = new Date();
           const endDate = new Date();
           endDate.setFullYear(endDate.getFullYear() + 1); // Default 1 year contract
 
-          const [contractResult] = await pool.query<OkPacket>(`
+          const [contractResult] = await pool.query<OkPacket>(
+            `
             INSERT INTO contracts 
             (contractNumber, studentId, roomId, startDate, endDate, depositAmount, monthlyFee, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
-          `, [
-            `CTR-${id}-${Date.now()}`,
-            id,
-            roomId,
-            startDate,
-            endDate,
-            depositAmount || 0,
-            monthlyFee || 0
-          ]);
+          `,
+            [
+              `CTR-${id}-${Date.now()}`,
+              id,
+              roomId,
+              startDate,
+              endDate,
+              depositAmount || 0,
+              monthlyFee || 0,
+            ]
+          );
 
           contractId = contractResult.insertId;
 
           // Update room occupancy
-          await pool.query(`
+          await pool.query(
+            `
             UPDATE rooms SET currentOccupancy = currentOccupancy + 1 
             WHERE id = ?
-          `, [roomId]);
+          `,
+            [roomId]
+          );
 
           // Log activity
-          await pool.query(`
+          await pool.query(
+            `
             INSERT INTO activity_logs 
             (userId, action, entityType, entityId, description)
             VALUES (?, 'assign_room', 'student', ?, 'Cập nhật thông tin phòng ở')
-          `, [req.user?.id || 1, id]);
+          `,
+            [req.user?.id || 1, id]
+          );
         }
 
         // Store metadata in a separate key-value table or session if needed
 
         // Commit transaction
-        await pool.query('COMMIT');
+        await pool.query("COMMIT");
 
         res.json({
           success: true,
-          message: 'Cập nhật thông tin phòng ở thành công',
+          message: "Cập nhật thông tin phòng ở thành công",
           data: {
             contractId,
             bedNumber,
             semester,
-            schoolYear
-          }
+            schoolYear,
+          },
         });
       } catch (error) {
         // Rollback on error
-        await pool.query('ROLLBACK');
+        await pool.query("ROLLBACK");
         throw error;
       }
     } catch (error) {
-      console.error('Error updating student dormitory:', error);
+      console.error("Error updating student dormitory:", error);
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Lỗi cập nhật thông tin phòng ở'
+        message:
+          error instanceof Error
+            ? error.message
+            : "Lỗi cập nhật thông tin phòng ở",
       });
     }
-  }
+  };
 
   updateStudentProfile: RequestHandler = async (req, res) => {
     // Bắt đầu transaction
@@ -568,12 +633,12 @@ export class StudentController {
 
       // Lấy thông tin sinh viên hiện tại bằng userId
       const [currentStudent] = await connection.query<RowDataPacket[]>(
-        'SELECT * FROM students WHERE userId = ?',
+        "SELECT * FROM students WHERE userId = ?",
         [userId]
       );
 
       if (!currentStudent.length) {
-        throw new Error('Không tìm thấy thông tin sinh viên');
+        throw new Error("Không tìm thấy thông tin sinh viên");
       }
 
       const studentId = currentStudent[0].id;
@@ -581,15 +646,15 @@ export class StudentController {
       // Kiểm tra email và số điện thoại trùng lặp (loại trừ sinh viên hiện tại)
       if (req.body.email) {
         const [existingEmail] = await connection.query<RowDataPacket[]>(
-          'SELECT id FROM students WHERE email = ? AND id != ?',
+          "SELECT id FROM students WHERE email = ? AND id != ?",
           [req.body.email, studentId]
         );
         if (existingEmail.length > 0) {
           await connection.rollback();
           res.status(400).json({
             success: false,
-            message: 'Email đã được sử dụng',
-            field: 'email'
+            message: "Email đã được sử dụng",
+            field: "email",
           });
           return;
         }
@@ -597,15 +662,15 @@ export class StudentController {
 
       if (req.body.phone) {
         const [existingPhone] = await connection.query<RowDataPacket[]>(
-          'SELECT id FROM students WHERE phone = ? AND id != ?',
+          "SELECT id FROM students WHERE phone = ? AND id != ?",
           [req.body.phone, studentId]
         );
         if (existingPhone.length > 0) {
           await connection.rollback();
           res.status(400).json({
             success: false,
-            message: 'Số điện thoại đã được sử dụng',
-            field: 'phone'
+            message: "Số điện thoại đã được sử dụng",
+            field: "phone",
           });
           return;
         }
@@ -614,12 +679,21 @@ export class StudentController {
       // Cập nhật thông tin cơ bản
       const updateData: any = {};
       const allowedFields = [
-        'fullName', 'birthDate', 'gender', 'phone',
-        'province', 'district', 'ward', 'address',
-        'faculty', 'major', 'className', 'email'
+        "fullName",
+        "birthDate",
+        "gender",
+        "phone",
+        "province",
+        "district",
+        "ward",
+        "address",
+        "faculty",
+        "major",
+        "className",
+        "email",
       ];
 
-      allowedFields.forEach(field => {
+      allowedFields.forEach((field) => {
         if (req.body[field] !== undefined) {
           updateData[field] = req.body[field];
         }
@@ -631,20 +705,20 @@ export class StudentController {
           // Kiểm tra kích thước file (giới hạn 5MB)
           const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
           if (req.file.size > MAX_FILE_SIZE) {
-            throw new Error('Kích thước file không được vượt quá 5MB');
+            throw new Error("Kích thước file không được vượt quá 5MB");
           }
 
-          console.log('File info:', {
+          console.log("File info:", {
             originalname: req.file.originalname,
             mimetype: req.file.mimetype,
             size: req.file.size,
             hasBuffer: !!req.file.buffer,
-            path: req.file.path
+            path: req.file.path,
           });
 
           // Kiểm tra mime type
-          if (!req.file.mimetype.startsWith('image/')) {
-            throw new Error('File phải là hình ảnh');
+          if (!req.file.mimetype.startsWith("image/")) {
+            throw new Error("File phải là hình ảnh");
           }
 
           const buffer = req.file.buffer || fs.readFileSync(req.file.path);
@@ -654,22 +728,32 @@ export class StudentController {
           const ext = path.extname(req.file.originalname);
           const filename = `student-${studentId}-${timestamp}${ext}`;
 
-          console.log('Preparing to upload:', {
+          console.log("Preparing to upload:", {
             filename,
-            bufferSize: buffer.length
+            bufferSize: buffer.length,
           });
 
           // Upload với timeout 30 giây
-          const avatarPath = await FilesService.singleUpload(buffer, filename, 'students', true);
+          const avatarPath = await FilesService.singleUpload(
+            buffer,
+            filename,
+            "students",
+            true
+          );
 
-          const newAvatarPath = await FilesService.getSignedUrl(avatarPath, true);
-          console.log('Upload result - newAvatarPath:', newAvatarPath);
+          const newAvatarPath = await FilesService.getSignedUrl(
+            avatarPath,
+            true
+          );
+          console.log("Upload result - newAvatarPath:", newAvatarPath);
 
           // Kiểm tra và xóa avatar cũ
           if (newAvatarPath && currentStudent[0].avatarPath) {
-            console.log('Current avatar path:', currentStudent[0].avatarPath);
-            const deleteResult = await FilesService.deleteFile(currentStudent[0].avatarPath);
-            console.log('Delete old avatar result:', deleteResult);
+            console.log("Current avatar path:", currentStudent[0].avatarPath);
+            const deleteResult = await FilesService.deleteFile(
+              currentStudent[0].avatarPath
+            );
+            console.log("Delete old avatar result:", deleteResult);
           }
 
           // Cập nhật đường dẫn avatar mới
@@ -677,15 +761,15 @@ export class StudentController {
 
           // Xóa file local nếu tồn tại
           if (req.file.path && fs.existsSync(req.file.path)) {
-            console.log('Cleaning up local file:', req.file.path);
+            console.log("Cleaning up local file:", req.file.path);
             fs.unlinkSync(req.file.path);
           }
         } catch (uploadError: any) {
-          console.error('Error details during avatar handling:', uploadError);
+          console.error("Error details during avatar handling:", uploadError);
 
           // Xóa file local nếu có lỗi
           if (req.file.path && fs.existsSync(req.file.path)) {
-            console.log('Cleaning up local file after error:', req.file.path);
+            console.log("Cleaning up local file after error:", req.file.path);
             fs.unlinkSync(req.file.path);
           }
 
@@ -695,15 +779,15 @@ export class StudentController {
 
       // Thực hiện cập nhật nếu có dữ liệu
       if (Object.keys(updateData).length > 0) {
-        await connection.query(
-          'UPDATE students SET ? WHERE id = ?',
-          [updateData, studentId]
-        );
+        await connection.query("UPDATE students SET ? WHERE id = ?", [
+          updateData,
+          studentId,
+        ]);
       }
 
       // Lấy thông tin sinh viên sau khi cập nhật
       const [updatedStudent] = await connection.query<RowDataPacket[]>(
-        'SELECT * FROM students WHERE id = ?',
+        "SELECT * FROM students WHERE id = ?",
         [studentId]
       );
 
@@ -711,10 +795,12 @@ export class StudentController {
       if (req.user?.id) {
         await activityLogService.logActivity(
           req.user.id,
-          'update',
-          'student',
+          "update",
+          "student",
           studentId,
-          `Updated student profile: ${updateData.fullName || currentStudent[0].fullName}`,
+          `Updated student profile: ${
+            updateData.fullName || currentStudent[0].fullName
+          }`,
           req
         );
       }
@@ -726,26 +812,31 @@ export class StudentController {
       let response = { ...updatedStudent[0] };
       if (response.avatarPath) {
         try {
-          response.avatarUrl = await FilesService.getSignedUrl(response.avatarPath, true);
+          response.avatarUrl = await FilesService.getSignedUrl(
+            response.avatarPath,
+            true
+          );
         } catch (urlError) {
-          console.error('Lỗi khi tạo signed URL:', urlError);
+          console.error("Lỗi khi tạo signed URL:", urlError);
         }
       }
 
       res.json({
         success: true,
-        message: 'Cập nhật thông tin sinh viên thành công',
-        data: response
+        message: "Cập nhật thông tin sinh viên thành công",
+        data: response,
       });
-
     } catch (error) {
       // Rollback nếu có lỗi
       await connection.rollback();
 
-      console.error('Error updating student profile:', error);
+      console.error("Error updating student profile:", error);
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Lỗi cập nhật thông tin sinh viên'
+        message:
+          error instanceof Error
+            ? error.message
+            : "Lỗi cập nhật thông tin sinh viên",
       });
     } finally {
       // Luôn release connection
@@ -755,44 +846,45 @@ export class StudentController {
 
   getCurrentStudentDetail: RequestHandler = async (req, res) => {
     try {
-      // Ensure user is logged in 
+      // Ensure user is logged in
       if (!req.user) {
-        console.log('No user found in request');
+        console.log("No user found in request");
         res.status(403).json({
           success: false,
-          message: 'Unauthorized access - No user in request'
+          message: "Unauthorized access - No user in request",
         });
         return;
       }
 
-      console.log('Current user in getCurrentStudentDetail:', req.user);
+      console.log("Current user in getCurrentStudentDetail:", req.user);
 
       // Get student ID from the user ID
       const [studentRecord] = await pool.query<RowDataPacket[]>(
-        'SELECT id FROM students WHERE userId = ?',
+        "SELECT id FROM students WHERE userId = ?",
         [req.user?.id || 0]
       );
 
-      console.log('Found student records:', studentRecord);
+      console.log("Found student records:", studentRecord);
 
       if (studentRecord.length === 0) {
-        console.log('No student record found for userId:', req.user.id);
+        console.log("No student record found for userId:", req.user.id);
         res.status(404).json({
           success: false,
-          message: 'Student profile not found for user ID: ' + req.user.id
+          message: "Student profile not found for user ID: " + req.user.id,
         });
         return;
       }
 
       const studentId = studentRecord[0].id;
 
-      console.log('Found student ID:', studentId);
+      console.log("Found student ID:", studentId);
 
       // Get student information
       const student = await StudentService.getStudentById(studentId);
 
       // Get dormitory information from contracts or rooms
-      const [dormitory] = await pool.query<RowDataPacket[]>(`
+      const [dormitory] = await pool.query<RowDataPacket[]>(
+        `
         SELECT 
           c.id as contractId,
           r.id as roomId,
@@ -813,10 +905,13 @@ export class StudentController {
         JOIN buildings b ON r.buildingId = b.id
         WHERE c.studentId = ? AND c.status = 'active'
         LIMIT 1
-      `, [studentId]);
+      `,
+        [studentId]
+      );
 
       // Get history records
-      const [history] = await pool.query<RowDataPacket[]>(`
+      const [history] = await pool.query<RowDataPacket[]>(
+        `
         SELECT 
           al.id,
           al.action,
@@ -828,21 +923,29 @@ export class StudentController {
         WHERE al.entityType = 'student' AND al.entityId = ?
         ORDER BY al.createdAt DESC
         LIMIT 10
-      `, [studentId]);
+      `,
+        [studentId]
+      );
 
       // If there's no history yet, add basic registration entry
-      const historyItems = history.length > 0 ? history : [{
-        id: 1,
-        action: 'register',
-        description: 'Đăng ký ký túc xá',
-        date: student.createdAt,
-        user: student.email
-      }];
+      const historyItems =
+        history.length > 0
+          ? history
+          : [
+              {
+                id: 1,
+                action: "register",
+                description: "Đăng ký ký túc xá",
+                date: student.createdAt,
+                user: student.email,
+              },
+            ];
 
       // Get roommates if student has a dormitory
       let roommates: RowDataPacket[] = [];
       if (dormitory && dormitory.length > 0 && dormitory[0].roomId) {
-        const [roommatResults] = await pool.query<RowDataPacket[]>(`
+        const [roommatResults] = await pool.query<RowDataPacket[]>(
+          `
           SELECT 
             s.id,
             s.studentCode,
@@ -853,7 +956,9 @@ export class StudentController {
           FROM contracts c
           JOIN students s ON c.studentId = s.id
           WHERE c.roomId = ? AND c.studentId != ? AND c.status = 'active'
-        `, [dormitory[0].roomId, studentId]);
+        `,
+          [dormitory[0].roomId, studentId]
+        );
 
         roommates = roommatResults;
       }
@@ -864,14 +969,17 @@ export class StudentController {
           student,
           dormitory: dormitory && dormitory.length > 0 ? dormitory[0] : {},
           history: historyItems,
-          roommates: roommates || []
-        }
+          roommates: roommates || [],
+        },
       });
     } catch (error) {
-      console.error('Error fetching current student details:', error);
+      console.error("Error fetching current student details:", error);
       res.status(400).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Lỗi lấy thông tin chi tiết sinh viên'
+        message:
+          error instanceof Error
+            ? error.message
+            : "Lỗi lấy thông tin chi tiết sinh viên",
       });
     }
   };
@@ -882,26 +990,47 @@ export class StudentController {
       if (!req.user) {
         res.status(403).json({
           success: false,
-          message: 'Unauthorized access'
+          message: "Unauthorized access",
         });
+        return;
       }
 
       // Get student ID from user ID
       const [studentResults] = await pool.query<RowDataPacket[]>(
-        'SELECT id FROM students WHERE userId = ?',
+        "SELECT id FROM students WHERE userId = ?",
         [req.user?.id || 0]
       );
 
       if (studentResults.length === 0) {
         res.status(404).json({
           success: false,
-          message: 'Student profile not found'
+          message: "Student profile not found",
         });
+        return;
       }
 
       const studentId = studentResults[0].id;
 
-      // Get student's invoices
+      // Lấy phòng hiện tại của sinh viên
+      const [roomResult] = await pool.query<RowDataPacket[]>(
+        `SELECT r.id as roomId, c.id as contractId 
+         FROM rooms r 
+         JOIN contracts c ON r.id = c.roomId 
+         WHERE c.studentId = ? AND c.status = 'active'`,
+        [studentId]
+      );
+
+      if (roomResult.length === 0) {
+        res.status(404).json({
+          success: false,
+          message: "Không tìm thấy phòng hiện tại của sinh viên",
+        });
+        return;
+      }
+
+      const roomId = roomResult[0].roomId;
+
+      // Get student's invoices based on room
       const [invoiceRows] = await pool.query<RowDataPacket[]>(
         `SELECT 
            i.id, i.invoiceNumber, i.invoiceMonth, i.dueDate,
@@ -910,18 +1039,17 @@ export class StudentController {
            r.id as roomId, r.roomNumber, r.floorNumber,
            b.id as buildingId, b.name as buildingName
          FROM invoices i
-         JOIN contracts c ON i.roomId = c.roomId
          JOIN rooms r ON i.roomId = r.id
          JOIN buildings b ON r.buildingId = b.id
-         WHERE c.studentId = ? AND (i.invoiceMonth BETWEEN c.startDate AND c.endDate OR c.endDate IS NULL)
+         WHERE i.roomId = ?
          ORDER BY i.invoiceMonth DESC`,
-        [studentId]
+        [roomId]
       );
 
       res.status(200).json({
         success: true,
         data: {
-          invoices: invoiceRows.map(invoice => ({
+          invoices: invoiceRows.map((invoice) => ({
             id: invoice.id,
             invoiceNumber: invoice.invoiceNumber,
             roomId: invoice.roomId,
@@ -940,23 +1068,23 @@ export class StudentController {
             dueDate: invoice.dueDate,
             paymentStatus: invoice.paymentStatus,
             paymentDate: invoice.paymentDate,
-            paymentMethod: invoice.paymentMethod
+            paymentMethod: invoice.paymentMethod,
           })),
           pagination: {
             total: invoiceRows.length,
             page: 1,
             limit: invoiceRows.length,
-            totalPages: 1
-          }
-        }
+            totalPages: 1,
+          },
+        },
       });
     } catch (error) {
-      console.error('Error fetching student invoices:', error);
+      console.error("Error fetching student invoices:", error);
       res.status(500).json({
         success: false,
-        message: 'Lỗi khi truy vấn hóa đơn',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: "Lỗi khi truy vấn hóa đơn",
+        error: error instanceof Error ? error.message : "Unknown error",
       });
     }
   };
-} 
+}

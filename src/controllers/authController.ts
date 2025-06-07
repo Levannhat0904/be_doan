@@ -32,7 +32,11 @@ export class AuthController {
           "user",
           result.user.id,
           `User logged in: ${email}`,
-          req
+          req,
+          undefined,
+          undefined,
+          undefined,
+          result.user.id
         );
       }
 
@@ -68,7 +72,11 @@ export class AuthController {
         "user",
         userId,
         `User logged out`,
-        req
+        req,
+        undefined,
+        undefined,
+        undefined,
+        userId
       );
 
       res.json({

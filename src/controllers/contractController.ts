@@ -226,7 +226,11 @@ export const createContract = async (req: Request, res: Response) => {
         "contract",
         result.insertId,
         activityDescription,
-        req
+        req,
+        roomId,
+        undefined,
+        result.insertId,
+        studentId
       );
 
       // Log to room entity for room timeline
@@ -236,7 +240,11 @@ export const createContract = async (req: Request, res: Response) => {
         "room",
         detail.roomId,
         `Sinh viên ${detail.fullName} (${detail.studentCode}) được thêm vào phòng ${detail.roomNumber} tòa ${detail.buildingName}`,
-        req
+        req,
+        roomId,
+        undefined,
+        result.insertId,
+        studentId
       );
     }
 
@@ -640,7 +648,10 @@ export const updateContract = async (req: Request, res: Response) => {
           "contract",
           Number(contractId),
           `Cập nhật hợp đồng: ${detail.contractNumber} - ${changesDescription}`,
-          req
+          req,
+          newRoomId,
+          undefined,
+          Number(contractId)
         );
 
         // Explicitly log to room timeline with detailed changes
@@ -650,7 +661,10 @@ export const updateContract = async (req: Request, res: Response) => {
           "room",
           newRoomId,
           `Cập nhật hợp đồng cho sinh viên ${detail.fullName} (${detail.studentCode}) ở phòng ${detail.roomNumber} tòa ${detail.buildingName}: ${changesDescription}`,
-          req
+          req,
+          newRoomId,
+          undefined,
+          Number(contractId)
         );
 
         // Additional logging for room changes
@@ -674,7 +688,10 @@ export const updateContract = async (req: Request, res: Response) => {
               "room",
               existingContract[0].roomId,
               `Sinh viên ${detail.fullName} (${detail.studentCode}) chuyển đi khỏi phòng ${oldRoom.roomNumber} tòa ${oldRoom.buildingName}`,
-              req
+              req,
+              existingContract[0].roomId,
+              undefined,
+              Number(contractId)
             );
 
             // Log student room change for the new room's timeline
@@ -684,7 +701,10 @@ export const updateContract = async (req: Request, res: Response) => {
               "room",
               newRoomId,
               `Sinh viên ${detail.fullName} (${detail.studentCode}) chuyển đến phòng ${detail.roomNumber} tòa ${detail.buildingName}`,
-              req
+              req,
+              newRoomId,
+              undefined,
+              Number(contractId)
             );
           }
         }
@@ -697,7 +717,10 @@ export const updateContract = async (req: Request, res: Response) => {
             "room",
             detail.roomId,
             `Sinh viên ${detail.fullName} (${detail.studentCode}) được thêm vào phòng ${detail.roomNumber} tòa ${detail.buildingName}`,
-            req
+            req,
+            detail.roomId,
+            undefined,
+            Number(contractId)
           );
         }
 
@@ -712,7 +735,10 @@ export const updateContract = async (req: Request, res: Response) => {
             "room",
             detail.roomId,
             `Sinh viên ${detail.fullName} (${detail.studentCode}) bị xóa khỏi phòng ${detail.roomNumber} tòa ${detail.buildingName}`,
-            req
+            req,
+            detail.roomId,
+            undefined,
+            Number(contractId)
           );
         }
       }
@@ -817,7 +843,10 @@ export const deleteContract = async (req: Request, res: Response) => {
           "contract",
           Number(contractId),
           activityDescription,
-          req
+          req,
+          detail.roomId,
+          undefined,
+          Number(contractId)
         );
 
         // Log to room entity for room timeline
@@ -828,7 +857,10 @@ export const deleteContract = async (req: Request, res: Response) => {
             "room",
             detail.roomId,
             `Sinh viên ${detail.fullName} (${detail.studentCode}) bị xóa khỏi phòng ${detail.roomNumber} tòa ${detail.buildingName} (hợp đồng đã xóa)`,
-            req
+            req,
+            detail.roomId,
+            undefined,
+            Number(contractId)
           );
         }
       }

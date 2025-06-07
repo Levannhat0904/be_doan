@@ -94,11 +94,11 @@ export const createTablesSQL = `
         UNIQUE KEY unique_room (buildingId, roomNumber),
         FOREIGN KEY (buildingId) REFERENCES buildings(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-     -- Thêm cột roomArea (diện tích phòng) vào bảng rooms
-ALTER TABLE rooms ADD COLUMN roomArea FLOAT;
+        -- Thêm cột roomArea (diện tích phòng) vào bảng rooms
+    ALTER TABLE rooms ADD COLUMN IF NOT EXISTS roomArea FLOAT;
 
--- Thêm cột notes (ghi chú) vào bảng rooms
-ALTER TABLE rooms ADD COLUMN notes TEXT;
+    -- Thêm cột notes (ghi chú) vào bảng rooms
+    ALTER TABLE rooms ADD COLUMN IF NOT EXISTS notes TEXT;
 
     -- 5. CONTRACTS & BILLING
     CREATE TABLE IF NOT EXISTS contracts (
@@ -187,14 +187,20 @@ ALTER TABLE rooms ADD COLUMN notes TEXT;
         createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS roomId INT;
+        ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS invoiceId INT;
+        ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS contractId INT;
+        ALTER TABLE activity_logs ADD FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE CASCADE;
+        ALTER TABLE activity_logs ADD FOREIGN KEY (invoiceId) REFERENCES invoices(id) ON DELETE CASCADE;
+        ALTER TABLE activity_logs ADD FOREIGN KEY (contractId) REFERENCES contracts(id) ON DELETE CASCADE;
 
     -- Create indexes
-    CREATE INDEX idxUsersEmail ON users(email);
-    CREATE INDEX idxStudentsStudentCode ON students(studentCode);
-    CREATE INDEX idxAdminsStaffCode ON admins(staffCode);
-    CREATE INDEX idxContractsStudentId ON contracts(studentId);
-    CREATE INDEX idxInvoicesStudentId ON invoices(studentId);
-    CREATE INDEX idxMaintenanceRequestsStudentId ON maintenance_requests(studentId);
-    CREATE INDEX idxNotificationsRecipientId ON notifications(recipientId);
-    CREATE INDEX idxActivityLogsUserId ON activity_logs(userId);
+    CREATE INDEX IF NOT EXISTS idxUsersEmail ON users(email);
+    CREATE INDEX IF NOT EXISTS idxStudentsStudentCode ON students(studentCode);
+    CREATE INDEX IF NOT EXISTS idxAdminsStaffCode ON admins(staffCode);
+    CREATE INDEX IF NOT EXISTS idxContractsStudentId ON contracts(studentId);
+    CREATE INDEX IF NOT EXISTS idxInvoicesStudentId ON invoices(studentId);
+    CREATE INDEX IF NOT EXISTS idxMaintenanceRequestsStudentId ON maintenance_requests(studentId);
+    CREATE INDEX IF NOT EXISTS idxNotificationsRecipientId ON notifications(recipientId);
+    CREATE INDEX IF NOT EXISTS idxActivityLogsUserId ON activity_logs(userId);
 `;
