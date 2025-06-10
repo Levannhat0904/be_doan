@@ -3,11 +3,13 @@ import cors from "cors";
 import helmet from "helmet";
 import path from "path";
 import dotenv from "dotenv";
+import cron from "node-cron";
 import logger from "./utils/logger";
 import initializeDatabase from "./scripts/initDb";
 import routes from "./routes";
 import { errorHandler } from "./middleware/errorHandler";
 import { sendEmail } from "./services/sendMail";
+import { runContractStatusUpdate, runInvoiceStatusUpdate } from "./controllers/cronController";
 
 dotenv.config();
 
@@ -42,6 +44,17 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use((req, res, next) => {
   logger.info(`${req.method} ${req.url}`);
   next();
+});
+
+// Thiết lập cronjobs 30p 1 lần
+cron.schedule("*/1 * * * *", async () => {
+  logger.info("Đang chạy cronjob cập nhật trạng thái hợp đồng...");
+  await runContractStatusUpdate();
+});
+
+cron.schedule("*/1 * * * *", async () => {
+  logger.info("Đang chạy cronjob cập nhật trạng thái hóa đơn...");
+  await runInvoiceStatusUpdate();
 });
 
 // Routes
@@ -120,6 +133,7 @@ app.get("/test-send-email", async (req, res) => {
 app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
   logger.info(`API available at http://localhost:${PORT}/api`);
+  logger.info(`Cronjobs đã được thiết lập: Cập nhật trạng thái hợp đồng và hóa đơn hàng ngày`);
 });
 
 export default app;

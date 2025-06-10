@@ -10,6 +10,7 @@ import dashboardRoutes from './dashboardRoutes';
 import contractRoutes from './contractRoutes';
 import activityLogRoutes from './activityLogRoutes';
 import sendmailRoutes from './sendmail';
+import cronRoutes from './cronRoutes';
 
 const router = express.Router();
 
@@ -25,4 +26,6 @@ router.use('/', invoiceRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/activity-logs', activityLogRoutes);
 router.use('/', sendmailRoutes);
+router.use('/cron', cronRoutes);
+
 export default router; 
