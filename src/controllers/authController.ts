@@ -289,4 +289,60 @@ export class AuthController {
       });
     }
   };
+
+  changePassword: RequestHandler = async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      // lấy bằng user id cách lấy từ token
+      const userId = req.user?.id;
+      console.log("userId", req);
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+        return;
+      }
+      const user = await AuthService.getUserById(userId as number);
+      if (!user) {
+        res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+        return;
+      }
+      const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+      if (!isPasswordValid) {
+        res.status(400).json({
+          success: false,
+          message: "Mật khẩu hiện tại không chính xác",
+        });
+      }
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(newPassword, salt);
+      await pool.query("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, userId]);
+      await activityLogService.logActivity(
+        userId,
+        "changePassword",
+        "user",
+        userId,
+        `User changed password`,
+        req,
+        undefined,
+        undefined,
+        undefined,
+        userId
+      );
+      res.status(200).json({
+        success: true,
+        message: "Mật khẩu đã được cập nhật thành công",
+      });
+    } catch (error) {
+      console.error("Error in changePassword:", error);
+      res.status(500).json({
+        success: false,
+        message: "Đã xảy ra lỗi khi xử lý yêu cầu",
+      });
+    }
+  };
 }

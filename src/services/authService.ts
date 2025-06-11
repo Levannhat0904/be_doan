@@ -168,4 +168,17 @@ export class AuthService {
       connection.release();
     }
   }
+
+  static async getUserById(userId: number): Promise<User> {
+    const connection = await pool.getConnection();
+    try {
+      const [users] = await connection.query<User[]>(
+        'SELECT * FROM users WHERE id = ?',
+        [userId]
+      );
+      return users[0];
+    } finally {
+      connection.release();
+    }
+  }
 } 

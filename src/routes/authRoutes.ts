@@ -20,5 +20,10 @@ router.post(
   "/reset-password",
   authController.resetPassword.bind(authController)
 );
+router.post(
+  "/change-password",
+  authMiddleware,
+  authController.changePassword.bind(authController)
+);
 
 export default router;
