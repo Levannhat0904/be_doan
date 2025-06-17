@@ -190,9 +190,11 @@ export const createTablesSQL = `
         ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS roomId INT;
         ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS invoiceId INT;
         ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS contractId INT;
+        ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS studentId INT;
         ALTER TABLE activity_logs ADD FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE CASCADE;
         ALTER TABLE activity_logs ADD FOREIGN KEY (invoiceId) REFERENCES invoices(id) ON DELETE CASCADE;
         ALTER TABLE activity_logs ADD FOREIGN KEY (contractId) REFERENCES contracts(id) ON DELETE CASCADE;
+        ALTER TABLE activity_logs ADD FOREIGN KEY (studentId) REFERENCES students(id) ON DELETE CASCADE;
 
     -- Create indexes
     CREATE INDEX IF NOT EXISTS idxUsersEmail ON users(email);

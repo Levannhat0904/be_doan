@@ -47,12 +47,12 @@ app.use((req, res, next) => {
 });
 
 // Thiết lập cronjobs 30p 1 lần
-cron.schedule("*/1 * * * *", async () => {
+cron.schedule("*/50 * * * *", async () => {
   logger.info("Đang chạy cronjob cập nhật trạng thái hợp đồng...");
   await runContractStatusUpdate();
 });
 
-cron.schedule("*/1 * * * *", async () => {
+cron.schedule("*/50 * * * *", async () => {
   logger.info("Đang chạy cronjob cập nhật trạng thái hóa đơn...");
   await runInvoiceStatusUpdate();
 });

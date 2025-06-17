@@ -65,8 +65,9 @@ class ActivityLogService {
     action?: string,
     roomId?: number,
     invoiceId?: number,
-    contractId?: number,
-    studentId?: number
+    contractId?: number | number[],
+    studentId?: number,
+    isStudentView: boolean = false
   ) {
     try {
       let query = `
@@ -84,6 +85,34 @@ class ActivityLogService {
       `;
 
       const params: any[] = [];
+
+      // Nếu là sinh viên xem và có contractId, thêm điều kiện lọc theo thời gian hợp đồng
+      if (isStudentView && contractId) {
+        query = `
+          SELECT al.*, u.email, 
+            CASE 
+              WHEN u.userType = 'admin' THEN a.fullName
+              WHEN u.userType = 'student' THEN s.fullName
+              ELSE NULL
+            END as userName
+          FROM activity_logs al
+          LEFT JOIN users u ON al.userId = u.id
+          LEFT JOIN admins a ON u.id = a.userId
+          LEFT JOIN students s ON u.id = s.userId
+          LEFT JOIN contracts c ON al.contractId = c.id
+          WHERE 1=1
+          AND al.createdAt >= c.startDate
+        `;
+
+        // Thêm điều kiện lọc theo thời gian dựa vào trạng thái hợp đồng
+        query += `
+          AND (
+            (c.status = 'active' AND al.createdAt <= c.endDate)
+            OR (c.status = 'expired' AND al.createdAt <= c.endDate)
+            OR (c.status = 'terminated' AND al.createdAt <= c.updatedAt)
+          )
+        `;
+      }
 
       if (entityId) {
         query += ` AND al.entityId = ?`;
@@ -111,8 +140,18 @@ class ActivityLogService {
       }
 
       if (contractId) {
-        query += ` AND al.contractId = ?`;
-        params.push(contractId);
+        // Xử lý nếu contractId là một mảng các ID
+        if (Array.isArray(contractId)) {
+          if (contractId.length > 0) {
+            const placeholders = contractId.map(() => '?').join(',');
+            query += ` AND al.contractId IN (${placeholders})`;
+            params.push(...contractId);
+          }
+        } else {
+          // Xử lý nếu contractId là một số đơn
+          query += ` AND al.contractId = ?`;
+          params.push(contractId);
+        }
       }
 
       if (studentId) {
@@ -161,8 +200,18 @@ class ActivityLogService {
       }
 
       if (contractId) {
-        countQuery += ` AND contractId = ?`;
-        countParams.push(contractId);
+        // Xử lý nếu contractId là một mảng các ID
+        if (Array.isArray(contractId)) {
+          if (contractId.length > 0) {
+            const placeholders = contractId.map(() => '?').join(',');
+            countQuery += ` AND contractId IN (${placeholders})`;
+            countParams.push(...contractId);
+          }
+        } else {
+          // Xử lý nếu contractId là một số đơn
+          countQuery += ` AND contractId = ?`;
+          countParams.push(contractId);
+        }
       }
 
       const [countResult] = await db.query(countQuery, countParams);

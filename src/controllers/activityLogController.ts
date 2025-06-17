@@ -17,6 +17,8 @@ class ActivityLogController {
         roomId,
         invoiceId,
         contractId,
+        studentId,
+        isStudentView = false,
       } = req.query;
 
       const logs = await activityLogService.getActivityLogs(
@@ -27,7 +29,9 @@ class ActivityLogController {
         action as string,
         roomId ? Number(roomId) : undefined,
         invoiceId ? Number(invoiceId) : undefined,
-        contractId ? Number(contractId) : undefined
+        contractId ? Number(contractId) : undefined,
+        studentId ? Number(studentId) : undefined,
+        isStudentView === 'true'
       );
 
       res.json({

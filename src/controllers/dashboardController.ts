@@ -20,7 +20,7 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
         COUNT(*) as totalRooms,
         COUNT(CASE WHEN status = 'available' AND currentOccupancy < capacity THEN 1 END) as availableRooms,
         COUNT(CASE WHEN status = 'maintenance' THEN 1 END) as maintenanceRooms,
-        ROUND(AVG(CAST(currentOccupancy AS FLOAT) / capacity * 100)) as occupancyRate
+        ROUND(SUM(currentOccupancy) / SUM(capacity) * 100) as occupancyRate
       FROM rooms`
     );
 
@@ -31,10 +31,16 @@ export const getDashboardSummary = async (req: Request, res: Response) => {
        WHERE status = 'pending'`
     );
 
-    // Get monthly revenue from all invoices, not limited to current month/year
+    // Get current month's revenue
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth() + 1; // JavaScript months are 0-indexed
+    const currentYear = currentDate.getFullYear();
+    
     const [revenueResult] = await pool.query<RowDataPacket[]>(
       `SELECT SUM(totalAmount) as monthlyRevenue
-       FROM invoices`
+       FROM invoices
+       WHERE MONTH(invoiceMonth) = ? AND YEAR(invoiceMonth) = ?`,
+      [currentMonth, currentYear]
     );
 
     const dashboardData = {
@@ -61,63 +67,51 @@ export const getMonthlyStats = async (req: Request, res: Response) => {
   try {
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
 
-    // Get revenue by month for the specified year, also include next year data
+    // Get revenue by month for the specified year
     const [revenueData] = await pool.query<RowDataPacket[]>(
       `SELECT 
-        YEAR(invoiceMonth) as year,
         MONTH(invoiceMonth) as month,
         SUM(totalAmount) as revenue
        FROM invoices
-       GROUP BY YEAR(invoiceMonth), MONTH(invoiceMonth)
-       ORDER BY YEAR(invoiceMonth), MONTH(invoiceMonth)`
+       WHERE YEAR(invoiceMonth) = ?
+       GROUP BY MONTH(invoiceMonth)
+       ORDER BY MONTH(invoiceMonth)`,
+      [year]
     );
 
-    // Get student count by month (based on contracts that were active in each month)
+    // Get student count by month based on active contracts
     const [studentData] = await pool.query<RowDataPacket[]>(
-      `SELECT 
-        MONTH(d) as month,
+      `WITH RECURSIVE months(m) AS (
+        SELECT 1 UNION ALL SELECT m+1 FROM months WHERE m < 12
+      )
+      SELECT 
+        m.m as month,
         COUNT(DISTINCT c.studentId) as students
-       FROM (
-         SELECT MAKEDATE(?, m) as d
-         FROM (
-           SELECT 1 as m UNION SELECT 2 UNION SELECT 3 UNION SELECT 4
-           UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8
-           UNION SELECT 9 UNION SELECT 10 UNION SELECT 11 UNION SELECT 12
-         ) months
-       ) dates
-       LEFT JOIN contracts c ON 
-         ? BETWEEN YEAR(c.startDate) AND YEAR(c.endDate)
-         AND MONTH(dates.d) BETWEEN MONTH(c.startDate) AND MONTH(c.endDate)
-       GROUP BY MONTH(dates.d)
-       ORDER BY month`,
-      [year, year]
+      FROM months m
+      LEFT JOIN contracts c ON 
+        ? BETWEEN YEAR(c.startDate) AND YEAR(c.endDate)
+        AND m.m BETWEEN MONTH(
+          IF(YEAR(c.startDate) < ?, '${year}-01-01', c.startDate)
+        ) AND MONTH(
+          IF(YEAR(c.endDate) > ?, '${year}-12-31', c.endDate)
+        )
+      GROUP BY m.m
+      ORDER BY m.m`,
+      [year, year, year]
     );
 
     // Combine the data for the response
     const monthlyData = [];
     for (let i = 1; i <= 12; i++) {
-      // Find all entries for this month from any year
-      const monthEntries = revenueData.filter(
-        item => parseInt(item.month) === i
-      );
-
-      // Sort by year descending to get the most recent data first
-      monthEntries.sort((a, b) => parseInt(b.year) - parseInt(a.year));
-
-      // Use the most recent data if available
-      const revenueValue = monthEntries.length > 0 ? Number(monthEntries[0].revenue) : 0;
-
+      const revenueItem = revenueData.find(item => parseInt(item.month) === i);
       const studentItem = studentData.find(item => parseInt(item.month) === i);
 
       monthlyData.push({
         month: i.toString(),
-        revenue: revenueValue,
+        revenue: revenueItem ? Number(revenueItem.revenue) : 0,
         students: studentItem ? parseInt(studentItem.students) : 0
       });
     }
-
-    console.log('Revenue data from database:', revenueData);
-    console.log('Monthly data being returned:', monthlyData);
 
     res.status(200).json(monthlyData);
   } catch (error) {
@@ -138,57 +132,41 @@ export const getYearlyStats = async (req: Request, res: Response) => {
         YEAR(invoiceMonth) as year,
         SUM(totalAmount) as revenue
        FROM invoices
+       WHERE YEAR(invoiceMonth) >= ?
        GROUP BY YEAR(invoiceMonth)
-       ORDER BY year`
+       ORDER BY year`,
+      [startYear]
     );
 
-    // Get yearly student count data
+    // Get yearly student count data based on contracts
+    // Count unique students who had an active contract at any point during each year
     const [studentData] = await pool.query<RowDataPacket[]>(
-      `SELECT 
-        year,
-        COUNT(DISTINCT studentId) as students
-       FROM (
-         SELECT 
-           c.studentId,
-           YEAR(dates.d) as year
-         FROM (
-           SELECT MAKEDATE(y, 1) as d
-           FROM (
-             SELECT ? as y UNION SELECT ? UNION SELECT ? UNION SELECT ? UNION SELECT ?
-           ) years
-         ) dates
-         JOIN contracts c ON 
-           YEAR(dates.d) BETWEEN YEAR(c.startDate) AND YEAR(c.endDate)
-       ) yearly_students
-       GROUP BY year
-       ORDER BY year`,
-      [startYear, startYear + 1, startYear + 2, startYear + 3, currentYear]
+      `WITH RECURSIVE years(y) AS (
+        SELECT ? UNION ALL SELECT y+1 FROM years WHERE y < ?
+      )
+      SELECT 
+        y.y as year,
+        COUNT(DISTINCT c.studentId) as students
+      FROM years y
+      LEFT JOIN contracts c ON 
+        y.y BETWEEN YEAR(c.startDate) AND YEAR(c.endDate)
+      GROUP BY y.y
+      ORDER BY y.y`,
+      [startYear, currentYear]
     );
 
     // Combine the data for the response
     const yearlyData = [];
     for (let year = startYear; year <= currentYear; year++) {
       const revenueItem = revenueData.find(item => parseInt(item.year) === year);
-      const studentItem = studentData.find(item => item.year === year);
+      const studentItem = studentData.find(item => parseInt(item.year) === year);
 
       yearlyData.push({
         year: year.toString(),
-        revenue: revenueItem ? revenueItem.revenue : 0,
-        students: studentItem ? studentItem.students : 0
+        revenue: revenueItem ? Number(revenueItem.revenue) : 0,
+        students: studentItem ? parseInt(studentItem.students) : 0
       });
     }
-
-    // Add future years that have revenue data
-    const futureYears = revenueData.filter(item => parseInt(item.year) > currentYear);
-    for (const item of futureYears) {
-      yearlyData.push({
-        year: item.year.toString(),
-        revenue: item.revenue,
-        students: 0
-      });
-    }
-
-    console.log('Yearly data being returned:', yearlyData);
 
     res.status(200).json(yearlyData);
   } catch (error) {
@@ -200,7 +178,7 @@ export const getYearlyStats = async (req: Request, res: Response) => {
 // Get occupancy data for the pie charts
 export const getOccupancyStats = async (req: Request, res: Response) => {
   try {
-    // Get monthly occupancy stats based on room occupancy
+    // Get room occupancy stats based on current occupancy
     const [roomOccupancy] = await pool.query<RowDataPacket[]>(
       `SELECT 
          SUM(currentOccupancy) as occupied,
@@ -209,23 +187,57 @@ export const getOccupancyStats = async (req: Request, res: Response) => {
        WHERE status != 'maintenance'`
     );
 
-    // Calculate percentages for the pie charts
-    const totalCapacity = roomOccupancy[0].occupied + roomOccupancy[0].available;
+    // Get gender distribution of students with active contracts
+    const [genderDistribution] = await pool.query<RowDataPacket[]>(
+      `SELECT 
+         s.gender,
+         COUNT(*) as count
+       FROM students s
+       INNER JOIN contracts c ON s.id = c.studentId
+       WHERE c.status = 'active'
+       GROUP BY s.gender`
+    );
 
-    const monthlyOccupancyData = [
+    // Calculate percentages for occupancy pie chart
+    const totalCapacity = Number(roomOccupancy[0].occupied) + Number(roomOccupancy[0].available) || 0;
+    const occupied = Number(roomOccupancy[0].occupied) || 0;
+    const available = Number(roomOccupancy[0].available) || 0;
+
+    const occupancyData = [
       {
         name: "Đã sử dụng",
-        value: totalCapacity > 0 ? Math.round(roomOccupancy[0].occupied / totalCapacity * 100) : 0
+        value: totalCapacity > 0 ? Math.round(occupied / totalCapacity * 100) : 0
       },
       {
         name: "Còn trống",
-        value: totalCapacity > 0 ? Math.round(roomOccupancy[0].available / totalCapacity * 100) : 0
+        value: totalCapacity > 0 ? Math.round(available / totalCapacity * 100) : 0
+      }
+    ];
+
+    // Format gender distribution data
+    const maleCount = genderDistribution.find(item => item.gender === 'male')?.count || 0;
+    const femaleCount = genderDistribution.find(item => item.gender === 'female')?.count || 0;
+    const otherCount = genderDistribution.find(item => item.gender === 'other')?.count || 0;
+    const totalStudents = maleCount + femaleCount + otherCount;
+
+    const genderData = [
+      {
+        name: "Nam",
+        value: totalStudents > 0 ? Math.round(maleCount / totalStudents * 100) : 0
+      },
+      {
+        name: "Nữ",
+        value: totalStudents > 0 ? Math.round(femaleCount / totalStudents * 100) : 0
+      },
+      {
+        name: "Khác",
+        value: totalStudents > 0 ? Math.round(otherCount / totalStudents * 100) : 0
       }
     ];
 
     res.status(200).json({
-      monthly: monthlyOccupancyData,
-      yearly: monthlyOccupancyData
+      occupancy: occupancyData,
+      gender: genderData
     });
   } catch (error) {
     console.error('Error fetching occupancy stats:', error);

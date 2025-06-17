@@ -1011,45 +1011,73 @@ export class StudentController {
 
       const studentId = studentResults[0].id;
 
-      // Lấy phòng hiện tại của sinh viên
-      const [roomResult] = await pool.query<RowDataPacket[]>(
-        `SELECT r.id as roomId, c.id as contractId 
-         FROM rooms r 
-         JOIN contracts c ON r.id = c.roomId 
-         WHERE c.studentId = ? AND c.status = 'active'`,
+      // Lấy tất cả hợp đồng của sinh viên
+      const [contractResult] = await pool.query<RowDataPacket[]>(
+        `SELECT r.id as roomId, c.id as contractId, c.contractNumber, c.status as contractStatus, 
+                c.startDate, c.endDate, c.updatedAt
+         FROM contracts c 
+         JOIN rooms r ON r.id = c.roomId 
+         WHERE c.studentId = ?`,
         [studentId]
       );
 
-      if (roomResult.length === 0) {
+      if (contractResult.length === 0) {
         res.status(404).json({
           success: false,
-          message: "Không tìm thấy phòng hiện tại của sinh viên",
+          message: "Không tìm thấy hợp đồng của sinh viên",
         });
         return;
       }
 
-      const roomId = roomResult[0].roomId;
+      // Mảng chứa hoá đơn từ tất cả các hợp đồng
+      let allInvoices: any[] = [];
+      
+      // Lấy hoá đơn cho từng hợp đồng
+      for (const contract of contractResult) {
+        const roomId = contract.roomId;
+        const contractId = contract.contractId;
+        const startDate = contract.startDate;
+        let endDate;
 
-      // Get student's invoices based on room
-      const [invoiceRows] = await pool.query<RowDataPacket[]>(
-        `SELECT 
-           i.id, i.invoiceNumber, i.invoiceMonth, i.dueDate,
-           i.roomFee, i.electricFee, i.waterFee, i.serviceFee,
-           i.totalAmount, i.paymentStatus, i.paymentDate, i.paymentMethod,
-           r.id as roomId, r.roomNumber, r.floorNumber,
-           b.id as buildingId, b.name as buildingName
-         FROM invoices i
-         JOIN rooms r ON i.roomId = r.id
-         JOIN buildings b ON r.buildingId = b.id
-         WHERE i.roomId = ?
-         ORDER BY i.invoiceMonth DESC`,
-        [roomId]
-      );
+        // Xác định ngày kết thúc dựa trên trạng thái hợp đồng
+        if (contract.contractStatus === 'terminated') {
+          endDate = contract.updatedAt;
+        } else {
+          endDate = contract.endDate;
+        }
+
+        // Lấy hoá đơn cho hợp đồng này, sử dụng leftJoin contracts để lấy contractNumber
+        const [invoiceRows] = await pool.query<RowDataPacket[]>(
+          `SELECT 
+             i.id, i.invoiceNumber, i.invoiceMonth, i.dueDate,
+             i.roomFee, i.electricFee, i.waterFee, i.serviceFee,
+             i.totalAmount, i.paymentStatus, i.paymentDate, i.paymentMethod,
+             r.id as roomId, r.roomNumber, r.floorNumber,
+             b.id as buildingId, b.name as buildingName,
+             ? as contractId, ? as contractNumber
+           FROM invoices i
+           JOIN rooms r ON i.roomId = r.id
+           JOIN buildings b ON r.buildingId = b.id
+           WHERE i.roomId = ? AND i.invoiceMonth BETWEEN ? AND ?
+           ORDER BY i.invoiceMonth DESC`,
+          [contractId, contract.contractNumber, roomId, startDate, endDate]
+        );
+
+        // Thêm các hoá đơn vào mảng kết quả
+        if (invoiceRows.length > 0) {
+          allInvoices = [...allInvoices, ...invoiceRows];
+        }
+      }
+
+      // Sắp xếp tất cả hoá đơn theo thời gian giảm dần
+      allInvoices.sort((a, b) => {
+        return new Date(b.invoiceMonth).getTime() - new Date(a.invoiceMonth).getTime();
+      });
 
       res.status(200).json({
         success: true,
         data: {
-          invoices: invoiceRows.map((invoice) => ({
+          invoices: allInvoices.map((invoice) => ({
             id: invoice.id,
             invoiceNumber: invoice.invoiceNumber,
             roomId: invoice.roomId,
@@ -1057,6 +1085,8 @@ export class StudentController {
             floorNumber: invoice.floorNumber,
             buildingId: invoice.buildingId,
             buildingName: invoice.buildingName,
+            contractId: invoice.contractId,
+            contractNumber: invoice.contractNumber,
             invoiceMonth: invoice.invoiceMonth,
             electricity: Math.round(invoice.electricFee / 2000), // kWh
             water: Math.round(invoice.waterFee / 10000), // m3
@@ -1071,9 +1101,9 @@ export class StudentController {
             paymentMethod: invoice.paymentMethod,
           })),
           pagination: {
-            total: invoiceRows.length,
+            total: allInvoices.length,
             page: 1,
-            limit: invoiceRows.length,
+            limit: allInvoices.length,
             totalPages: 1,
           },
         },
