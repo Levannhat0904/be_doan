@@ -124,7 +124,7 @@ export const getMonthlyStats = async (req: Request, res: Response) => {
 export const getYearlyStats = async (req: Request, res: Response) => {
   try {
     const currentYear = new Date().getFullYear();
-    const startYear = currentYear - 4; // Last 5 years
+    const startYear = parseInt(req.query.startYear as string) || (currentYear - 9); // Lấy dữ liệu 10 năm gần nhất
 
     // Get yearly revenue data
     const [revenueData] = await pool.query<RowDataPacket[]>(
