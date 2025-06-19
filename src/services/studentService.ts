@@ -237,7 +237,8 @@ export class StudentService {
   static async getAllStudents(
     page: number = 1,
     limit: number = 10,
-    search: string = ""
+    search: string = "",
+    status: string = ""
   ): Promise<{ students: any[]; total: number }> {
     const connection = await pool.getConnection();
     try {
@@ -249,6 +250,7 @@ export class StudentService {
         page,
         limit,
         search,
+        status,
         offset,
         searchPattern,
       });
@@ -267,6 +269,12 @@ export class StudentService {
           s.major LIKE ?
         )`;
         queryParams = Array(7).fill(searchPattern);
+      }
+
+      // Thêm điều kiện lọc theo status nếu có
+      if (status && status.trim()) {
+        whereClause += " AND s.status = ?";
+        queryParams.push(status);
       }
 
       // Log câu query count

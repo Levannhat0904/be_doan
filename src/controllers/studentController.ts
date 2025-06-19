@@ -257,13 +257,15 @@ export class StudentController {
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 10;
       const search = (req.query.search as string) || "";
+      const status = (req.query.status as string) || "";
 
-      console.log("Controller received:", { page, limit, search }); // Debug log
+      console.log("Controller received:", { page, limit, search, status }); // Debug log
 
       const { students, total } = await StudentService.getAllStudents(
         page,
         limit,
-        search
+        search,
+        status
       );
 
       const totalPages = Math.ceil(total / limit);

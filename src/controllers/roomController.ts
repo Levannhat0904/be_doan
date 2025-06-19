@@ -659,7 +659,7 @@ export const updateRoom = async (req: Request, res: Response) => {
 // Delete Room
 export const deleteRoom = async (req: Request, res: Response) => {
   try {
-    const roomId = req.params.id;
+    const roomId = req.params.roomId;
 
     // Check if room exists
     const [roomResult] = await pool.query<RowDataPacket[]>(

@@ -303,19 +303,80 @@ export const getContractsByStudent = async (req: Request, res: Response) => {
 
 export const getAllContracts = async (req: Request, res: Response) => {
   try {
-    const [contracts] = await pool.query<RowDataPacket[]>(
-      `SELECT c.*, 
-          r.roomNumber, r.floorNumber, r.pricePerMonth,
-          b.name as buildingName,
-          s.fullName, s.studentCode
-       FROM contracts c
-       JOIN rooms r ON c.roomId = r.id
-       JOIN buildings b ON r.buildingId = b.id
-       JOIN students s ON c.studentId = s.id
-       ORDER BY c.createdAt DESC`
-    );
+    // Lấy các tham số tìm kiếm từ query string
+    const search = req.query.search as string || '';
+    const status = req.query.status as string || '';
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = (page - 1) * limit;
+    
+    // Xây dựng câu điều kiện WHERE
+    let whereCondition = '';
+    const queryParams: any[] = [];
 
-    return res.status(200).json({ success: true, data: contracts });
+    // Xử lý tìm kiếm
+    if (search) {
+      whereCondition = `
+        AND (
+          c.contractNumber LIKE ? OR 
+          s.fullName LIKE ? OR 
+          s.studentCode LIKE ? OR
+          r.roomNumber LIKE ?
+        )
+      `;
+      const searchPattern = `%${search}%`;
+      queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern);
+    }
+
+    // Xử lý lọc theo trạng thái
+    if (status) {
+      whereCondition += ' AND c.status = ?';
+      queryParams.push(status);
+    }
+    
+    // Đếm tổng số bản ghi thỏa mãn điều kiện
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM contracts c
+      JOIN rooms r ON c.roomId = r.id
+      JOIN buildings b ON r.buildingId = b.id
+      JOIN students s ON c.studentId = s.id
+      WHERE 1=1 ${whereCondition}
+    `;
+    const [countResult] = await pool.query<RowDataPacket[]>(countQuery, queryParams);
+    const total = (countResult as any)[0].total;
+
+    // Truy vấn dữ liệu với phân trang
+    const query = `
+      SELECT c.*, 
+        r.roomNumber, r.floorNumber, r.pricePerMonth,
+        b.name as buildingName,
+        s.fullName, s.studentCode, s.email, s.phone, s.faculty, s.className
+      FROM contracts c
+      JOIN rooms r ON c.roomId = r.id
+      JOIN buildings b ON r.buildingId = b.id
+      JOIN students s ON c.studentId = s.id
+      WHERE 1=1 ${whereCondition}
+      ORDER BY c.createdAt DESC
+      LIMIT ? OFFSET ?
+    `;
+    
+    // Thêm tham số phân trang
+    queryParams.push(limit, offset);
+    
+    const [contracts] = await pool.query<RowDataPacket[]>(query, queryParams);
+    
+    // Trả về kết quả kèm thông tin phân trang
+    return res.status(200).json({ 
+      success: true, 
+      data: contracts,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
+        itemsPerPage: limit
+      }
+    });
   } catch (error) {
     console.error("Error fetching all contracts:", error);
     return res

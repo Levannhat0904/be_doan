@@ -1437,3 +1437,40 @@ export const submitInvoicePayment = async (req: Request, res: Response) => {
     });
   }
 };
+
+// API trả về thống kê số lượng hóa đơn theo trạng thái
+export const getInvoiceStats = async (req: Request, res: Response) => {
+  try {
+    // Đếm tổng số hóa đơn
+    const [totalRows] = await pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) as total FROM invoices`
+    );
+    const total = totalRows[0].total;
+
+    // Đếm theo từng trạng thái
+    const [statusRows] = await pool.query<RowDataPacket[]>(
+      `SELECT paymentStatus, COUNT(*) as count FROM invoices GROUP BY paymentStatus`
+    );
+    const stats: any = {
+      total,
+      pending: 0,
+      paid: 0,
+      overdue: 0,
+      waiting_for_approval: 0,
+    };
+    statusRows.forEach((row: any) => {
+      stats[row.paymentStatus] = row.count;
+    });
+    return res.status(200).json({
+      success: true,
+      data: stats,
+    });
+  } catch (error) {
+    console.error("Error fetching invoice stats:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi khi truy vấn thống kê hóa đơn",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};

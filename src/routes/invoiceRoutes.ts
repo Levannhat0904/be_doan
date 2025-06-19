@@ -107,4 +107,14 @@ router.post(
   }
 );
 
+// Đổi route thống kê hóa đơn thành /invoices-stats
+router.get(
+  '/invoices-stats',
+  authMiddleware,
+  isAdmin,
+  (req, res, next) => {
+    InvoiceController.getInvoiceStats(req, res).catch(next);
+  }
+);
+
 export default router;
